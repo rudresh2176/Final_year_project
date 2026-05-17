@@ -443,8 +443,13 @@ export default function DashboardPage() {
         </motion.div>
       )}
 
-      {/* Row 1: Connection Status & Summary */}
+      {/* Row 1: Detected Faults & Warnings — TOP */}
       <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.05 }}>
+        <FaultWarningPanel faults={faults} warnings={warnings} loading={loading} />
+      </motion.div>
+
+      {/* Row 2: Connection Status & Summary */}
+      <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.08 }}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
           <StatusIndicator timestamp={liveTimestamp} isOffline={isOffline} />
         </div>
@@ -457,7 +462,7 @@ export default function DashboardPage() {
         />
       </motion.div>
 
-      {/* Row 2: Parameter Display */}
+      {/* Row 3: Parameter Display */}
       <motion.div
         className="grid grid-cols-1 gap-4 lg:grid-cols-2"
         {...fadeIn}
@@ -467,7 +472,7 @@ export default function DashboardPage() {
         <ParameterGrid title="Secondary Side (Output)" parameters={secondaryParams} loading={loading} />
       </motion.div>
 
-      {/* Row 3: Efficiency & Loss */}
+      {/* Row 4: Efficiency & Loss */}
       <motion.div
         className="grid grid-cols-1 gap-4 sm:grid-cols-2"
         {...fadeIn}
@@ -477,7 +482,7 @@ export default function DashboardPage() {
         <LossCard loss={loss} status={lossStatus} loading={loading} />
       </motion.div>
 
-      {/* Row 4: Live Charts */}
+      {/* Row 5: Live Charts */}
       <motion.div
         className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3"
         {...fadeIn}
@@ -509,13 +514,8 @@ export default function DashboardPage() {
         />
       </motion.div>
 
-      {/* Row 5: Faults & Warnings */}
-      <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.25 }}>
-        <FaultWarningPanel faults={faults} warnings={warnings} loading={loading} />
-      </motion.div>
-
       {/* Row 6: Live Data Table */}
-      <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.3 }}>
+      <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.25 }}>
         <LiveDataPreview data={liveData} loading={loading} />
       </motion.div>
     </div>
