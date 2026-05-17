@@ -1,0 +1,56 @@
+// TransMonitor - Transformer Monitoring & Fault Classification System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Data log entry from transformer monitoring
+model DataLog {
+  id                String   @id @default(cuid())
+  timestamp         DateTime @default(now())
+  
+  // Primary side (input) parameters
+  primaryVoltage    Float    @default(0)
+  primaryCurrent    Float    @default(0)
+  primaryPower      Float    @default(0)
+  primaryEnergy     Float    @default(0)
+  primaryFrequency  Float    @default(0)
+  primaryPowerFactor Float   @default(0)
+  
+  // Secondary side (output) parameters
+  secondaryVoltage    Float    @default(0)
+  secondaryCurrent    Float    @default(0)
+  secondaryPower      Float    @default(0)
+  secondaryEnergy     Float    @default(0)
+  secondaryFrequency  Float    @default(0)
+  secondaryPowerFactor Float   @default(0)
+  
+  // Calculated values
+  loss       Float  @default(0)
+  efficiency Float  @default(0)
+  
+  // Status
+  status     String @default("OFFLINE")
+  severity   String @default("Normal")
+  
+  createdAt  DateTime @default(now())
+}
+
+// Notification entry
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   @default("info")     // fault, warning, critical, offline, info
+  title       String
+  message     String
+  severity    String   @default("Low")       // Low, Medium, High, Normal
+  isRead      Boolean  @default(false)
+  faults      String?  // JSON string of detected faults
+  warnings    String?  // JSON string of detected warnings
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
+}

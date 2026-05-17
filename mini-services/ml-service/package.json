@@ -1,0 +1,8 @@
+{
+  "name": "ml-service",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "train": "python train_model.py"
+  }
+}
