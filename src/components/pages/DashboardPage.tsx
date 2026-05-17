@@ -6,7 +6,7 @@ import { database } from '@/lib/firebase';
 import { useAppStore, type DataLogType } from '@/lib/store';
 import { motion } from 'framer-motion';
 import { Separator } from '@/components/ui/separator';
-import { WifiOff, Radio } from 'lucide-react';
+import { WifiOff } from 'lucide-react';
 
 import StatusIndicator from '@/components/dashboard/StatusIndicator';
 import ParameterGrid, { type Parameter } from '@/components/dashboard/ParameterGrid';
@@ -24,15 +24,25 @@ const fadeIn = {
   transition: { duration: 0.4, ease: 'easeOut' },
 };
 
+// Helper: all-zero params
+const zeroParams: Parameter[] = [
+  { label: 'Voltage', value: 0, unit: 'V' },
+  { label: 'Current', value: 0, unit: 'A' },
+  { label: 'Power', value: 0, unit: 'W' },
+  { label: 'Energy', value: 0, unit: 'Wh' },
+  { label: 'Frequency', value: 0, unit: 'Hz' },
+  { label: 'Power Factor', value: 0, unit: 'PF' },
+];
+
 export default function DashboardPage() {
   const store = useAppStore();
 
-  // Local state
+  // Local state — start as OFFLINE until Firebase proves otherwise
   const [loading, setLoading] = useState(true);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useState(true);
   const [liveTimestamp, setLiveTimestamp] = useState('');
-  const [primaryParams, setPrimaryParams] = useState<Parameter[]>([]);
-  const [secondaryParams, setSecondaryParams] = useState<Parameter[]>([]);
+  const [primaryParams, setPrimaryParams] = useState<Parameter[]>(zeroParams);
+  const [secondaryParams, setSecondaryParams] = useState<Parameter[]>(zeroParams);
   const [efficiency, setEfficiency] = useState(0);
   const [loss, setLoss] = useState(0);
   const [lossStatus, setLossStatus] = useState('Normal');
@@ -49,9 +59,27 @@ export default function DashboardPage() {
   // Live data table (max 10 rows)
   const [liveData, setLiveData] = useState<LiveDataRow[]>([]);
 
-  // Refs to hold latest data for the interval callback
+  // Refs
   const sensorDataRef = useRef<any>(null);
   const prevFaultsRef = useRef<string[]>([]);
+  // Track Firebase data staleness: if data hasn't changed in 10s, ESP32 is offline
+  const prevPrimaryDataRef = useRef<string>('');
+  const prevSecondaryDataRef = useRef<string>('');
+  const lastDataChangeTimeRef = useRef<number>(0);
+
+  // --- Force offline: set all state to offline mode ---
+  const forceOffline = useCallback(() => {
+    setIsOffline(true);
+    setStatus('Offline');
+    setSeverity('Normal');
+    setFaults([]);
+    setWarnings([]);
+    setEfficiency(0);
+    setLoss(0);
+    setLossStatus('Normal');
+    setPrimaryParams(zeroParams);
+    setSecondaryParams(zeroParams);
+  }, []);
 
   // --- Live clock (every second) ---
   useEffect(() => {
@@ -63,19 +91,21 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Helper: all-zero params
-  const zeroParams: Parameter[] = [
-    { label: 'Voltage', value: 0, unit: 'V' },
-    { label: 'Current', value: 0, unit: 'A' },
-    { label: 'Power', value: 0, unit: 'W' },
-    { label: 'Energy', value: 0, unit: 'Wh' },
-    { label: 'Frequency', value: 0, unit: 'Hz' },
-    { label: 'Power Factor', value: 0, unit: 'PF' },
-  ];
+  // --- Staleness check: every second, if no data change in 10s → offline ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (lastDataChangeTimeRef.current === 0) return; // haven't received any data yet
+      const elapsed = Date.now() - lastDataChangeTimeRef.current;
+      if (elapsed > 10000) {
+        forceOffline();
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [forceOffline]);
 
   // --- Firebase Realtime Database listeners ---
   useEffect(() => {
-    let connected = false;
+    let firebaseFired = false;
 
     const primaryRef = ref(database, 'primary');
     const secondaryRef = ref(database, 'secondary');
@@ -84,31 +114,35 @@ export default function DashboardPage() {
       primaryRef,
       (snapshot) => {
         const data = snapshot.val();
-        if (data && !connected) {
-          connected = true;
-          store.setConnectionStatus('online');
-          setIsOffline(false);
-        }
-        if (data) {
-          sensorDataRef.current = {
-            ...sensorDataRef.current,
-            primaryVoltage: data.voltage ?? 0,
-            primaryCurrent: data.current ?? 0,
-            primaryPower: data.power ?? 0,
-            primaryEnergy: data.energy ?? 0,
-            primaryFrequency: data.frequency ?? 0,
-            primaryPowerFactor: data.pf ?? 0,
-          };
-          setPrimaryParams([
-            { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
-            { label: 'Current', value: data.current ?? 0, unit: 'A' },
-            { label: 'Power', value: data.power ?? 0, unit: 'W' },
-            { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
-            { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-            { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
-          ]);
-        }
-        if (connected) setLoading(false);
+        if (!data) return; // Firebase has no data
+
+        // Check if data actually changed (skip stale duplicate reads)
+        const dataStr = JSON.stringify(data);
+        if (dataStr === prevPrimaryDataRef.current) return;
+        prevPrimaryDataRef.current = dataStr;
+
+        // Data changed — mark as live
+        lastDataChangeTimeRef.current = Date.now();
+        firebaseFired = true;
+        setLoading(false);
+
+        sensorDataRef.current = {
+          ...sensorDataRef.current,
+          primaryVoltage: data.voltage ?? 0,
+          primaryCurrent: data.current ?? 0,
+          primaryPower: data.power ?? 0,
+          primaryEnergy: data.energy ?? 0,
+          primaryFrequency: data.frequency ?? 0,
+          primaryPowerFactor: data.pf ?? 0,
+        };
+        setPrimaryParams([
+          { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
+          { label: 'Current', value: data.current ?? 0, unit: 'A' },
+          { label: 'Power', value: data.power ?? 0, unit: 'W' },
+          { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
+          { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
+          { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
+        ]);
       },
       (error) => {
         console.error('Firebase primary listener error:', error);
@@ -119,49 +153,44 @@ export default function DashboardPage() {
       secondaryRef,
       (snapshot) => {
         const data = snapshot.val();
-        if (data && !connected) {
-          connected = true;
-          store.setConnectionStatus('online');
-          setIsOffline(false);
-        }
-        if (data) {
-          sensorDataRef.current = {
-            ...sensorDataRef.current,
-            secondaryVoltage: data.voltage ?? 0,
-            secondaryCurrent: data.current ?? 0,
-            secondaryPower: data.power ?? 0,
-            secondaryEnergy: data.energy ?? 0,
-            secondaryFrequency: data.frequency ?? 0,
-            secondaryPowerFactor: data.pf ?? 0,
-          };
-          setSecondaryParams([
-            { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
-            { label: 'Current', value: data.current ?? 0, unit: 'A' },
-            { label: 'Power', value: data.power ?? 0, unit: 'W' },
-            { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
-            { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-            { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
-          ]);
-        }
-        if (connected) setLoading(false);
+        if (!data) return;
+
+        const dataStr = JSON.stringify(data);
+        if (dataStr === prevSecondaryDataRef.current) return;
+        prevSecondaryDataRef.current = dataStr;
+
+        lastDataChangeTimeRef.current = Date.now();
+        firebaseFired = true;
+        setLoading(false);
+
+        sensorDataRef.current = {
+          ...sensorDataRef.current,
+          secondaryVoltage: data.voltage ?? 0,
+          secondaryCurrent: data.current ?? 0,
+          secondaryPower: data.power ?? 0,
+          secondaryEnergy: data.energy ?? 0,
+          secondaryFrequency: data.frequency ?? 0,
+          secondaryPowerFactor: data.pf ?? 0,
+        };
+        setSecondaryParams([
+          { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
+          { label: 'Current', value: data.current ?? 0, unit: 'A' },
+          { label: 'Power', value: data.power ?? 0, unit: 'W' },
+          { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
+          { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
+          { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
+        ]);
       },
       (error) => {
         console.error('Firebase secondary listener error:', error);
       }
     );
 
-    // If no data arrives within 5s, show offline
+    // If no data at all from Firebase within 5s, confirm offline
     const timeout = setTimeout(() => {
-      if (!connected) {
-        store.setConnectionStatus('offline');
-        setIsOffline(true);
-        setStatus('Offline');
-        setSeverity('Normal');
-        setFaults([]);
-        setWarnings([]);
+      if (!firebaseFired) {
+        forceOffline();
         setLoading(false);
-        setPrimaryParams(zeroParams);
-        setSecondaryParams(zeroParams);
       }
     }, 5000);
 
@@ -170,15 +199,24 @@ export default function DashboardPage() {
       unsubSecondary();
       clearTimeout(timeout);
     };
-  }, [store]);
+  }, [forceOffline]);
 
   // --- Prediction pipeline (every 2 seconds) ---
   const runPredictionPipeline = useCallback(async () => {
+    // If stale (no data change in 10s), skip
+    if (lastDataChangeTimeRef.current > 0) {
+      const elapsed = Date.now() - lastDataChangeTimeRef.current;
+      if (elapsed > 10000) {
+        forceOffline();
+        return;
+      }
+    }
+
     const sd = sensorDataRef.current;
     if (!sd) return;
 
-    // Check if transformer is offline (all critical parameters are 0)
-    const isOffline =
+    // Check if all critical parameters are 0 → offline
+    const allZero =
       (sd.primaryVoltage ?? 0) === 0 &&
       (sd.primaryCurrent ?? 0) === 0 &&
       (sd.primaryPower ?? 0) === 0 &&
@@ -186,22 +224,12 @@ export default function DashboardPage() {
       (sd.secondaryCurrent ?? 0) === 0 &&
       (sd.secondaryPower ?? 0) === 0;
 
-    // If offline, set status, zero out params, and don't run prediction or log data
-    if (isOffline) {
-      setIsOffline(true);
-      setStatus('Offline');
-      setSeverity('Normal');
-      setFaults([]);
-      setWarnings([]);
-      setEfficiency(0);
-      setLoss(0);
-      setLossStatus('Normal');
-      setPrimaryParams(zeroParams);
-      setSecondaryParams(zeroParams);
-      store.setConnectionStatus('offline');
+    if (allZero) {
+      forceOffline();
       return;
     }
 
+    // Transformer is online — set online status
     setIsOffline(false);
 
     const inputPower = sd.primaryPower ?? 0;
@@ -212,12 +240,10 @@ export default function DashboardPage() {
     setLoss(Math.max(0, calculatedLoss));
     setEfficiency(Math.min(100, Math.max(0, calculatedEfficiency)));
 
-    // Determine loss status
     if (calculatedLoss > 300) setLossStatus('Fault');
     else if (calculatedLoss > 150) setLossStatus('Warning');
     else setLossStatus('Normal');
 
-    // Build request for ML service
     const payload = {
       primaryVoltage: sd.primaryVoltage ?? 0,
       primaryCurrent: sd.primaryCurrent ?? 0,
@@ -252,7 +278,6 @@ export default function DashboardPage() {
         setWarnings(predWarnings);
         setSeverity(predSeverity);
 
-        // Update store
         store.setPredictionResult({
           status: predStatus,
           faults: predFaults,
@@ -276,7 +301,6 @@ export default function DashboardPage() {
           timestamp: new Date().toISOString(),
         });
 
-        // Check for new faults to notify
         const prevFaults = prevFaultsRef.current;
         const newFaults = predFaults.filter((f: string) => !prevFaults.includes(f));
         if (newFaults.length > 0) {
@@ -294,7 +318,6 @@ export default function DashboardPage() {
         }
         prevFaultsRef.current = predFaults;
 
-        // Log to store
         const logEntry: DataLogType = {
           id: crypto.randomUUID(),
           timestamp: new Date(),
@@ -309,7 +332,6 @@ export default function DashboardPage() {
         };
         store.addRecentLog(logEntry);
 
-        // Update live data table
         const timeStr = new Date().toLocaleTimeString();
         setLiveData((prev) => {
           const newRow: LiveDataRow = {
@@ -325,7 +347,6 @@ export default function DashboardPage() {
           return [newRow, ...prev].slice(0, 10);
         });
 
-        // Update chart data
         setVoltageChartData((prev) => {
           const point: ChartDataPoint = {
             time: timeStr,
@@ -375,14 +396,12 @@ export default function DashboardPage() {
             status: predStatus,
             severity: predSeverity,
           }),
-        }).catch(() => {
-          // Silently fail - don't block UI for DB logging
-        });
+        }).catch(() => {});
       }
     } catch (err) {
       console.error('Prediction pipeline error:', err);
     }
-  }, [store]);
+  }, [store, forceOffline]);
 
   // --- Run prediction pipeline every 2 seconds ---
   useEffect(() => {
@@ -418,7 +437,7 @@ export default function DashboardPage() {
               Transformer Offline
             </span>
             <span className="text-xs text-red-600/80 dark:text-red-400/80">
-              No data received from Firebase. All parameters are set to 0. Data logging is paused.
+              No live data received from Firebase. All parameters are set to 0. Data logging is paused.
             </span>
           </div>
         </motion.div>

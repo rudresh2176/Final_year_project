@@ -46,7 +46,7 @@ const componentsList: { icon: LucideIcon; name: string; description: string }[] 
   { icon: Thermometer, name: 'PZEM-004T V3.0', description: 'AC power monitoring module' },
   { icon: Cpu, name: 'ESP32 DevKit', description: 'Microcontroller with WiFi & BLE' },
   { icon: Zap, name: 'Dry-Type Transformer', description: '2 KVA, 230V/120V single-phase' },
-  { icon: Smartphone, name: 'LCD Display', description: '16x2 character LCD readout' },
+  { icon: Database, name: 'Firebase', description: 'Real-time cloud database for IoT data' },
   { icon: Battery, name: 'Power Supply', description: '5V DC for ESP32 and sensors' },
   { icon: Cable, name: 'Connecting Wires', description: 'UART and power connections' },
 ];

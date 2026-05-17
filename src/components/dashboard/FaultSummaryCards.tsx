@@ -15,6 +15,7 @@ interface FaultSummaryCardsProps {
 
 function statusColor(status: string) {
   const s = status.toLowerCase();
+  if (s === 'offline') return 'text-red-600 dark:text-red-400';
   if (s === 'fault') return 'text-red-600 dark:text-red-400';
   if (s === 'warning') return 'text-amber-600 dark:text-amber-400';
   return 'text-green-600 dark:text-green-400';
@@ -22,6 +23,7 @@ function statusColor(status: string) {
 
 function statusBg(status: string) {
   const s = status.toLowerCase();
+  if (s === 'offline') return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
   if (s === 'fault') return 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
   if (s === 'warning') return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800';
   return 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800';
