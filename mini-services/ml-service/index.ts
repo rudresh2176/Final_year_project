@@ -55,7 +55,7 @@ interface HealthResponse {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const RATED_CURRENT = 6; // Primary rated current in Amps
+const RATED_CURRENT = 8.7; // Primary rated current: 2KVA / 230V = 8.7A
 
 // Voltage thresholds
 const VOLTAGE = {

@@ -172,6 +172,18 @@ export default function DashboardPage() {
     const sd = sensorDataRef.current;
     if (!sd) return;
 
+    // Check if transformer is offline (all critical parameters are 0)
+    const isOffline =
+      (sd.primaryVoltage ?? 0) === 0 &&
+      (sd.primaryCurrent ?? 0) === 0 &&
+      (sd.primaryPower ?? 0) === 0 &&
+      (sd.secondaryVoltage ?? 0) === 0 &&
+      (sd.secondaryCurrent ?? 0) === 0 &&
+      (sd.secondaryPower ?? 0) === 0;
+
+    // If offline, don't run prediction or log data
+    if (isOffline) return;
+
     const inputPower = sd.primaryPower ?? 0;
     const outputPower = sd.secondaryPower ?? 0;
     const calculatedLoss = inputPower - outputPower;
