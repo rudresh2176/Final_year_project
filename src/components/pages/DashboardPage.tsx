@@ -186,13 +186,18 @@ export default function DashboardPage() {
       (sd.secondaryCurrent ?? 0) === 0 &&
       (sd.secondaryPower ?? 0) === 0;
 
-    // If offline, set status and don't run prediction or log data
+    // If offline, set status, zero out params, and don't run prediction or log data
     if (isOffline) {
       setIsOffline(true);
       setStatus('Offline');
       setSeverity('Normal');
       setFaults([]);
       setWarnings([]);
+      setEfficiency(0);
+      setLoss(0);
+      setLossStatus('Normal');
+      setPrimaryParams(zeroParams);
+      setSecondaryParams(zeroParams);
       store.setConnectionStatus('offline');
       return;
     }
@@ -422,7 +427,7 @@ export default function DashboardPage() {
       {/* Row 1: Connection Status & Summary */}
       <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.05 }}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
-          <StatusIndicator timestamp={liveTimestamp} />
+          <StatusIndicator timestamp={liveTimestamp} isOffline={isOffline} />
         </div>
         <FaultSummaryCards
           status={status}

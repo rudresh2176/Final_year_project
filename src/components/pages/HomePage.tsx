@@ -72,11 +72,6 @@ export default function HomePage() {
           An innovative IoT-based solution for real-time monitoring and intelligent fault
           detection in dry-type transformers using machine learning algorithms.
         </p>
-        <div className="mt-2 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-4 py-2 text-xs font-medium text-muted-foreground shadow-sm">
-            Single-Phase 230V/120V &middot; 2 KVA
-          </span>
-        </div>
       </motion.div>
 
       {/* Key Features Grid */}
