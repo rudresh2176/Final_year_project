@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   { id: 'team', label: 'Team Members', icon: <Users className="h-5 w-5" /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell className="h-5 w-5" /> },
   { id: 'dashboard', label: 'Monitoring Dashboard', icon: <Activity className="h-5 w-5" /> },
-  { id: 'session', label: 'Session Data', icon: <Table className="h-5 w-5" /> },
+  { id: 'session', label: 'Data History', icon: <Table className="h-5 w-5" /> },
 ];
 
 function getStatusColor(status: string): string {

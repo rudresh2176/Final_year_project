@@ -6,6 +6,7 @@ import { database } from '@/lib/firebase';
 import { useAppStore, type DataLogType } from '@/lib/store';
 import { motion } from 'framer-motion';
 import { Separator } from '@/components/ui/separator';
+import { WifiOff, Radio } from 'lucide-react';
 
 import StatusIndicator from '@/components/dashboard/StatusIndicator';
 import ParameterGrid, { type Parameter } from '@/components/dashboard/ParameterGrid';
@@ -28,6 +29,7 @@ export default function DashboardPage() {
 
   // Local state
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
   const [liveTimestamp, setLiveTimestamp] = useState('');
   const [primaryParams, setPrimaryParams] = useState<Parameter[]>([]);
   const [secondaryParams, setSecondaryParams] = useState<Parameter[]>([]);
@@ -61,6 +63,16 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Helper: all-zero params
+  const zeroParams: Parameter[] = [
+    { label: 'Voltage', value: 0, unit: 'V' },
+    { label: 'Current', value: 0, unit: 'A' },
+    { label: 'Power', value: 0, unit: 'W' },
+    { label: 'Energy', value: 0, unit: 'Wh' },
+    { label: 'Frequency', value: 0, unit: 'Hz' },
+    { label: 'Power Factor', value: 0, unit: 'PF' },
+  ];
+
   // --- Firebase Realtime Database listeners ---
   useEffect(() => {
     let connected = false;
@@ -75,6 +87,7 @@ export default function DashboardPage() {
         if (data && !connected) {
           connected = true;
           store.setConnectionStatus('online');
+          setIsOffline(false);
         }
         if (data) {
           sensorDataRef.current = {
@@ -109,6 +122,7 @@ export default function DashboardPage() {
         if (data && !connected) {
           connected = true;
           store.setConnectionStatus('online');
+          setIsOffline(false);
         }
         if (data) {
           sensorDataRef.current = {
@@ -140,23 +154,14 @@ export default function DashboardPage() {
     const timeout = setTimeout(() => {
       if (!connected) {
         store.setConnectionStatus('offline');
+        setIsOffline(true);
+        setStatus('Offline');
+        setSeverity('Normal');
+        setFaults([]);
+        setWarnings([]);
         setLoading(false);
-        setPrimaryParams([
-          { label: 'Voltage', value: 0, unit: 'V' },
-          { label: 'Current', value: 0, unit: 'A' },
-          { label: 'Power', value: 0, unit: 'W' },
-          { label: 'Energy', value: 0, unit: 'Wh' },
-          { label: 'Frequency', value: 0, unit: 'Hz' },
-          { label: 'Power Factor', value: 0, unit: 'PF' },
-        ]);
-        setSecondaryParams([
-          { label: 'Voltage', value: 0, unit: 'V' },
-          { label: 'Current', value: 0, unit: 'A' },
-          { label: 'Power', value: 0, unit: 'W' },
-          { label: 'Energy', value: 0, unit: 'Wh' },
-          { label: 'Frequency', value: 0, unit: 'Hz' },
-          { label: 'Power Factor', value: 0, unit: 'PF' },
-        ]);
+        setPrimaryParams(zeroParams);
+        setSecondaryParams(zeroParams);
       }
     }, 5000);
 
@@ -181,8 +186,18 @@ export default function DashboardPage() {
       (sd.secondaryCurrent ?? 0) === 0 &&
       (sd.secondaryPower ?? 0) === 0;
 
-    // If offline, don't run prediction or log data
-    if (isOffline) return;
+    // If offline, set status and don't run prediction or log data
+    if (isOffline) {
+      setIsOffline(true);
+      setStatus('Offline');
+      setSeverity('Normal');
+      setFaults([]);
+      setWarnings([]);
+      store.setConnectionStatus('offline');
+      return;
+    }
+
+    setIsOffline(false);
 
     const inputPower = sd.primaryPower ?? 0;
     const outputPower = sd.secondaryPower ?? 0;
@@ -381,6 +396,28 @@ export default function DashboardPage() {
       </motion.div>
 
       <Separator />
+
+      {/* Offline Banner */}
+      {isOffline && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950/30"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/50">
+            <WifiOff className="h-5 w-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium text-red-700 dark:text-red-300">
+              Transformer Offline
+            </span>
+            <span className="text-xs text-red-600/80 dark:text-red-400/80">
+              No data received from Firebase. All parameters are set to 0. Data logging is paused.
+            </span>
+          </div>
+        </motion.div>
+      )}
 
       {/* Row 1: Connection Status & Summary */}
       <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.05 }}>

@@ -262,7 +262,7 @@ export default function SessionPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
       >
-        <h1 className="text-xl font-medium text-foreground">Session Data</h1>
+        <h1 className="text-xl font-medium text-foreground">Data History</h1>
         <p className="text-sm text-muted-foreground font-medium mt-1">
           Browse and export historical transformer monitoring data.
         </p>
