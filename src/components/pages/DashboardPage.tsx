@@ -255,7 +255,7 @@ export default function DashboardPage() {
       efficiency: calculatedEfficiency,
     };
 
-    // --- Update live charts and preview immediately (before ML) ---
+    // --- Only update UI and log data when TRANSFORMER IS ONLINE ---
     const timeStr = new Date().toLocaleTimeString();
 
     // Update live data preview table (last 10 rows)
@@ -334,6 +334,7 @@ export default function DashboardPage() {
     store.addRecentLog(logEntry);
 
     // --- ML Prediction (best effort) + DB logging with fault type ---
+    // Note: We only reach here if transformer is online (checks above returned early)
     try {
       const response = await fetch('/api/predict?XTransformPort=3003', {
         method: 'POST',
