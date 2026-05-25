@@ -236,3 +236,39 @@ Stage Summary:
 - Firebase key confirmed as `seconday`, staleness at 60 seconds
 - 27 sample records seeded in database for Data History verification
 - Live Data Preview and Data History page will now show data correctly
+
+---
+Task ID: 6
+Agent: Main Orchestrator
+Task: Add faultType column, show all fault types in Data History, and seed complete data
+
+Work Log:
+- Added `faultType` (String?) and `warnings` (String?) columns to Prisma DataLog schema
+- Ran `bun run db:push` to sync schema with SQLite database
+- Updated `/api/data-logs` POST handler to store faultType and warnings
+- Refactored DashboardPage prediction pipeline:
+  - Charts and live preview update immediately (before ML)
+  - DB logging happens after ML prediction completes (to include fault type)
+  - Falls back to logging without fault type if ML fails
+- Updated SessionPage (Data History) table with two new columns:
+  - "Fault Type" column: shows red badge with fault name(s), or "—" for no fault
+  - "Warnings" column: shows amber text with warning names, or "—" for no warnings
+  - Updated CSV export to include Fault Type and Warnings columns
+  - Updated skeleton loading columns from 12 to 14, empty state colspan to 14
+- Seeded 42 sample records across 7 days covering ALL 5 fault types:
+  - Over Voltage: 3 individual + 2 combined (5 total)
+  - Under Voltage: 3 individual + 1 combined (4 total)
+  - Over Load: 3 individual + 2 combined (6 total)
+  - High Loss: 3 individual + 2 combined (5 total)
+  - Low Efficiency: 3 individual + 1 combined (4 total)
+  - Combined multi-fault entries with High severity (3 records)
+  - All 5 warning types represented (11 warning records)
+  - 13 normal records
+- ESLint passes with zero errors
+
+Stage Summary:
+- Database now stores fault type and warnings for every logged reading
+- Data History table shows fault type (red badge) and warnings (amber text) columns
+- CSV export includes fault type and warnings data
+- 42 seeded records covering all 5 fault types, all 5 warning types, normal, and combined faults
+- Dashboard pipeline refactored to include fault type in DB logging

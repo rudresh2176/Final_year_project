@@ -48,6 +48,8 @@ interface DataRecord {
   loss: number;
   efficiency: number;
   severity: string;
+  faultType: string | null;
+  warnings: string | null;
 }
 
 // --- Helpers ---
@@ -86,6 +88,8 @@ function exportToCSV(data: DataRecord[], filename: string) {
   const headers = [
     'Timestamp',
     'Status',
+    'Fault Type',
+    'Warnings',
     'Primary Voltage (V)',
     'Primary Current (A)',
     'Primary Power (W)',
@@ -108,6 +112,8 @@ function exportToCSV(data: DataRecord[], filename: string) {
   const rows = data.map((row) => [
     escapeCSV(formatTimestamp(row.createdAt)),
     escapeCSV(row.status),
+    escapeCSV(row.faultType ?? '-'),
+    escapeCSV(row.warnings ? JSON.parse(row.warnings).join('; ') : '-'),
     escapeCSV(row.primaryVoltage.toFixed(2)),
     escapeCSV(row.primaryCurrent.toFixed(2)),
     escapeCSV(row.primaryPower.toFixed(2)),
@@ -424,6 +430,8 @@ export default function SessionPage() {
                     <TableHead className="text-xs font-medium w-12 text-center sticky top-0 bg-muted/50 z-10">#</TableHead>
                     <TableHead className="text-xs font-medium sticky top-0 bg-muted/50 z-10">Timestamp</TableHead>
                     <TableHead className="text-xs font-medium w-20 sticky top-0 bg-muted/50 z-10">Status</TableHead>
+                    <TableHead className="text-xs font-medium sticky top-0 bg-muted/50 z-10">Fault Type</TableHead>
+                    <TableHead className="text-xs font-medium sticky top-0 bg-muted/50 z-10">Warnings</TableHead>
                     <TableHead className="text-xs font-medium text-right sticky top-0 bg-muted/50 z-10">Pri V (V)</TableHead>
                     <TableHead className="text-xs font-medium text-right sticky top-0 bg-muted/50 z-10">Pri I (A)</TableHead>
                     <TableHead className="text-xs font-medium text-right sticky top-0 bg-muted/50 z-10">Pri P (W)</TableHead>
@@ -439,7 +447,7 @@ export default function SessionPage() {
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i} className={i % 2 === 0 ? 'bg-background' : 'bg-muted/30'}>
-                        {Array.from({ length: 12 }).map((_, j) => (
+                        {Array.from({ length: 14 }).map((_, j) => (
                           <TableCell key={j}>
                             <Skeleton className="h-4 w-full" />
                           </TableCell>
@@ -448,7 +456,7 @@ export default function SessionPage() {
                     ))
                   ) : data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="h-48 text-center">
+                      <TableCell colSpan={14} className="h-48 text-center">
                         <div className="flex flex-col items-center gap-2 text-muted-foreground">
                           <FileSpreadsheet className="h-8 w-8 opacity-40" />
                           <p className="text-sm font-medium">No data found</p>
@@ -477,6 +485,27 @@ export default function SessionPage() {
                           >
                             {row.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium">
+                          {row.faultType ? (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-medium px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                            >
+                              {row.faultType}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium max-w-[160px] truncate">
+                          {row.warnings ? (
+                            <span className="text-amber-700 dark:text-amber-300">
+                              {(() => { try { return JSON.parse(row.warnings).join(', '); } catch { return row.warnings; } })()}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-xs text-right font-mono">
                           {row.primaryVoltage.toFixed(2)}

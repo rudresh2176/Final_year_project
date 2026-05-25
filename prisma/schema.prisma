@@ -35,9 +35,11 @@ model DataLog {
   efficiency Float  @default(0)
   
   // Status
-  status     String @default("OFFLINE")
-  severity   String @default("Normal")
-  
+  status     String  @default("OFFLINE")
+  severity   String  @default("Normal")
+  faultType  String? // e.g. "Over Voltage", "Under Voltage", "Over Load", "High Loss", "Low Efficiency"
+  warnings   String? // JSON string of detected warnings
+
   createdAt  DateTime @default(now())
 }
 

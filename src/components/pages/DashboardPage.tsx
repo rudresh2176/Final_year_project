@@ -255,7 +255,7 @@ export default function DashboardPage() {
       efficiency: calculatedEfficiency,
     };
 
-    // --- Always update live data, charts, and DB when online (independent of ML) ---
+    // --- Update live charts and preview immediately (before ML) ---
     const timeStr = new Date().toLocaleTimeString();
 
     // Update live data preview table (last 10 rows)
@@ -318,30 +318,6 @@ export default function DashboardPage() {
       timestamp: new Date().toISOString(),
     });
 
-    // Persist to DB — always log when online (independent of ML prediction)
-    fetch('/api/data-logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        primaryVoltage: sd.primaryVoltage ?? 0,
-        primaryCurrent: sd.primaryCurrent ?? 0,
-        primaryPower: sd.primaryPower ?? 0,
-        primaryEnergy: sd.primaryEnergy ?? 0,
-        primaryFrequency: sd.primaryFrequency ?? 0,
-        primaryPowerFactor: sd.primaryPowerFactor ?? 0,
-        secondaryVoltage: sd.secondaryVoltage ?? 0,
-        secondaryCurrent: sd.secondaryCurrent ?? 0,
-        secondaryPower: sd.secondaryPower ?? 0,
-        secondaryEnergy: sd.secondaryEnergy ?? 0,
-        secondaryFrequency: sd.secondaryFrequency ?? 0,
-        secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
-        loss: calculatedLoss,
-        efficiency: calculatedEfficiency,
-        status: status,
-        severity: severity,
-      }),
-    }).catch(() => {});
-
     // Add to recent logs in store
     const logEntry: DataLogType = {
       id: crypto.randomUUID(),
@@ -357,7 +333,7 @@ export default function DashboardPage() {
     };
     store.addRecentLog(logEntry);
 
-    // --- ML Prediction (best effort — faults/warnings depend on this) ---
+    // --- ML Prediction (best effort) + DB logging with fault type ---
     try {
       const response = await fetch('/api/predict?XTransformPort=3003', {
         method: 'POST',
@@ -365,48 +341,127 @@ export default function DashboardPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) return;
+      if (response.ok) {
+        const result = await response.json();
 
-      const result = await response.json();
+        if (result.success && result.data) {
+          const pred = result.data;
+          const predStatus = pred.status ?? 'Normal';
+          const predFaults = pred.faults ?? [];
+          const predWarnings = pred.warnings ?? [];
+          const predSeverity = pred.severity ?? 'Normal';
 
-      if (result.success && result.data) {
-        const pred = result.data;
-        const predStatus = pred.status ?? 'Normal';
-        const predFaults = pred.faults ?? [];
-        const predWarnings = pred.warnings ?? [];
-        const predSeverity = pred.severity ?? 'Normal';
+          setStatus(predStatus);
+          setFaults(predFaults);
+          setWarnings(predWarnings);
+          setSeverity(predSeverity);
 
-        setStatus(predStatus);
-        setFaults(predFaults);
-        setWarnings(predWarnings);
-        setSeverity(predSeverity);
-
-        store.setPredictionResult({
-          status: predStatus,
-          faults: predFaults,
-          warnings: predWarnings,
-          severity: predSeverity,
-        });
-
-        const prevFaults = prevFaultsRef.current;
-        const newFaults = predFaults.filter((f: string) => !prevFaults.includes(f));
-        if (newFaults.length > 0) {
-          store.addNotification({
-            id: crypto.randomUUID(),
-            type: 'fault',
-            title: `Fault Detected: ${newFaults[0]}`,
-            message: `${newFaults.length} new fault(s) detected by AI prediction`,
-            severity: predSeverity as 'Low' | 'Medium' | 'High' | 'Normal',
-            isRead: false,
+          store.setPredictionResult({
+            status: predStatus,
             faults: predFaults,
             warnings: predWarnings,
-            timestamp: new Date(),
+            severity: predSeverity,
           });
+
+          const prevFaults = prevFaultsRef.current;
+          const newFaults = predFaults.filter((f: string) => !prevFaults.includes(f));
+          if (newFaults.length > 0) {
+            store.addNotification({
+              id: crypto.randomUUID(),
+              type: 'fault',
+              title: `Fault Detected: ${newFaults[0]}`,
+              message: `${newFaults.length} new fault(s) detected by AI prediction`,
+              severity: predSeverity as 'Low' | 'Medium' | 'High' | 'Normal',
+              isRead: false,
+              faults: predFaults,
+              warnings: predWarnings,
+              timestamp: new Date(),
+            });
+          }
+          prevFaultsRef.current = predFaults;
+
+          // Persist to DB with fault type from ML
+          fetch('/api/data-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              primaryVoltage: sd.primaryVoltage ?? 0,
+              primaryCurrent: sd.primaryCurrent ?? 0,
+              primaryPower: sd.primaryPower ?? 0,
+              primaryEnergy: sd.primaryEnergy ?? 0,
+              primaryFrequency: sd.primaryFrequency ?? 0,
+              primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+              secondaryVoltage: sd.secondaryVoltage ?? 0,
+              secondaryCurrent: sd.secondaryCurrent ?? 0,
+              secondaryPower: sd.secondaryPower ?? 0,
+              secondaryEnergy: sd.secondaryEnergy ?? 0,
+              secondaryFrequency: sd.secondaryFrequency ?? 0,
+              secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+              loss: calculatedLoss,
+              efficiency: calculatedEfficiency,
+              status: predStatus,
+              severity: predSeverity,
+              faultType: predFaults.length > 0 ? predFaults.join(', ') : null,
+              warnings: predWarnings.length > 0 ? JSON.stringify(predWarnings) : null,
+            }),
+          }).catch(() => {});
+
+          return; // DB logged with ML data — done
         }
-        prevFaultsRef.current = predFaults;
       }
+
+      // ML failed — log with current status (no fault type)
+      fetch('/api/data-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primaryVoltage: sd.primaryVoltage ?? 0,
+          primaryCurrent: sd.primaryCurrent ?? 0,
+          primaryPower: sd.primaryPower ?? 0,
+          primaryEnergy: sd.primaryEnergy ?? 0,
+          primaryFrequency: sd.primaryFrequency ?? 0,
+          primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+          secondaryVoltage: sd.secondaryVoltage ?? 0,
+          secondaryCurrent: sd.secondaryCurrent ?? 0,
+          secondaryPower: sd.secondaryPower ?? 0,
+          secondaryEnergy: sd.secondaryEnergy ?? 0,
+          secondaryFrequency: sd.secondaryFrequency ?? 0,
+          secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+          loss: calculatedLoss,
+          efficiency: calculatedEfficiency,
+          status: status,
+          severity: severity,
+          faultType: null,
+          warnings: null,
+        }),
+      }).catch(() => {});
     } catch (err) {
       console.error('Prediction pipeline error:', err);
+      // Log even on error
+      fetch('/api/data-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primaryVoltage: sd.primaryVoltage ?? 0,
+          primaryCurrent: sd.primaryCurrent ?? 0,
+          primaryPower: sd.primaryPower ?? 0,
+          primaryEnergy: sd.primaryEnergy ?? 0,
+          primaryFrequency: sd.primaryFrequency ?? 0,
+          primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+          secondaryVoltage: sd.secondaryVoltage ?? 0,
+          secondaryCurrent: sd.secondaryCurrent ?? 0,
+          secondaryPower: sd.secondaryPower ?? 0,
+          secondaryEnergy: sd.secondaryEnergy ?? 0,
+          secondaryFrequency: sd.secondaryFrequency ?? 0,
+          secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+          loss: calculatedLoss,
+          efficiency: calculatedEfficiency,
+          status: status,
+          severity: severity,
+          faultType: null,
+          warnings: null,
+        }),
+      }).catch(() => {});
     }
   }, [store, forceOffline, status, severity]);
 

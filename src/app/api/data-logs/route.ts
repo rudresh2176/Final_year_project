@@ -23,6 +23,8 @@ export async function POST(request: NextRequest) {
         efficiency: body.efficiency ?? 0,
         status: body.status ?? 'OFFLINE',
         severity: body.severity ?? 'Normal',
+        faultType: body.faultType ?? null,
+        warnings: body.warnings ?? null,
       },
     });
 
