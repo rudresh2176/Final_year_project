@@ -129,10 +129,12 @@ export default function DashboardPage() {
         if (dataStr === prevPrimaryDataRef.current) return;
         prevPrimaryDataRef.current = dataStr;
 
-        // Data changed — mark as live
+        // Data changed — mark as live and bring system online
         lastDataChangeTimeRef.current = Date.now();
         firebaseFired = true;
         setLoading(false);
+        isOfflineRef.current = false;
+        setIsOffline(false);
 
         sensorDataRef.current = {
           ...sensorDataRef.current,
@@ -170,6 +172,8 @@ export default function DashboardPage() {
         lastDataChangeTimeRef.current = Date.now();
         firebaseFired = true;
         setLoading(false);
+        isOfflineRef.current = false;
+        setIsOffline(false);
 
         sensorDataRef.current = {
           ...sensorDataRef.current,
@@ -211,7 +215,14 @@ export default function DashboardPage() {
 
   // --- Prediction pipeline (every 2 seconds) ---
   const runPredictionPipeline = useCallback(async () => {
-    // If stale (no data change in 60s), skip
+    // GATE: If system is offline, do NOTHING — no charts, no live data, no DB logging
+    // Only the Firebase listener can bring the system back online
+    if (isOfflineRef.current) {
+      console.log('[Pipeline] Blocked — system is offline, skipping all processing');
+      return;
+    }
+
+    // If stale (no data change in 60s), go offline and skip
     if (lastDataChangeTimeRef.current > 0) {
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
       if (elapsed > 60000) {
@@ -237,7 +248,7 @@ export default function DashboardPage() {
       return;
     }
 
-    // Transformer is online — set online status
+    // Transformer is online — confirm online status
     isOfflineRef.current = false;
     setIsOffline(false);
 
@@ -395,8 +406,8 @@ export default function DashboardPage() {
           }
           prevFaultsRef.current = predFaults;
 
-          // Re-check offline state INSIDE async callback — prevents race condition
-          // where system goes offline while ML was in-flight
+          // CRITICAL: Re-check offline state INSIDE async callback
+          // Prevents race condition where system goes offline while ML was in-flight
           if (isOfflineRef.current) {
             console.log('[Pipeline] Skipping DB log — system went offline during ML prediction');
             return;

@@ -345,3 +345,25 @@ Stage Summary:
 - The 412 error was caused by: `output: standalone` + Prisma failing on missing SQLite file during build
 - Now the app gracefully degrades without a database — no crash, no 412
 - Dashboard, Firebase, ML prediction all work without any database
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix offline data logging — add isOfflineRef gate to prevent ANY processing when system is OFFLINE
+
+Work Log:
+- User reported data was still being displayed/logged while system showed OFFLINE status
+- Analyzed screenshot showing Live Data Preview with data values (Pri V: 87.60, Sec V: 89.10, etc.) while system was offline
+- Identified root cause: **race condition between staleness timer (1s) and pipeline (2s)** — the pipeline could process stale data before the staleness check triggered
+- Implemented definitive fix with 3-layer offline gate:
+  1. **Top-level gate** (line 220): `if (isOfflineRef.current) return;` — stops ALL processing immediately when offline
+  2. **Firebase listeners** (lines 136-137, 175-176): Only Firebase can bring system back online by setting `isOfflineRef.current = false`
+  3. **ML async callback** (lines 410-413): Re-checks offline state before DB write to prevent race condition
+- Added console.log messages for debugging: pipeline blocked / DB log skipped
+- Verified: ESLint passes clean, dev server compiles successfully
+
+Stage Summary:
+- **Offline = Offline**: When system is OFFLINE, absolutely NOTHING processes — no charts, no live data table, no DB logging
+- **Online recovery**: Only Firebase Realtime Database listener can bring system back online (when genuinely new data arrives)
+- **No more race conditions**: The isOfflineRef gate is checked at 3 layers to prevent any data leak
+- **User-facing**: Offline banner shows, live data table shows "No data recorded yet", charts are empty, DB receives zero records
