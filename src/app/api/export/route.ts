@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json(
+        { success: false, error: 'Database not available in this environment' },
+        { status: 503 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
@@ -31,7 +38,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Generate CSV content
     const headers = [
       'Timestamp',
       'Status',
@@ -73,7 +79,6 @@ export async function GET(request: NextRequest) {
     ]);
 
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-
     const filename = `transmonitor-data-${new Date().toISOString().slice(0, 10)}.csv`;
 
     return new NextResponse(csvContent, {
@@ -84,7 +89,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.warn('[Export] DB export skipped (unavailable or not configured):', error);
+    console.warn('[Export] DB export skipped:', error);
     return NextResponse.json(
       { success: false, error: 'Database unavailable in this environment' },
       { status: 503 }

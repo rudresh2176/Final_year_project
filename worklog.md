@@ -324,3 +324,24 @@ Stage Summary:
 - **Firebase**: Still used for real-time ESP32 data (cloud-hosted, works everywhere)
 - **All API routes**: Handle missing database gracefully without crashing
 - **Production build**: Compiles and generates all routes successfully
+---
+Task ID: 3
+Agent: Main Agent
+Task: Fix 412 PreconditionFailed deployment error
+
+Work Log:
+- Analyzed 412 errors on ALL requests (including favicon.ico) — platform-level failure
+- Identified root cause: `DATABASE_URL=file:db/custom.db` in .env causes Prisma to fail during serverless build (file doesn't exist on build server)
+- Fixed `src/lib/db.ts`: made Prisma client lazy-initialized, returns null if DB is unavailable (no crash)
+- Updated all DB-dependent API routes with null guards:
+  - `/api/data-logs` (POST/GET) — returns skipped/empty if db is null
+  - `/api/notifications` (GET/POST/PUT/DELETE) — returns skipped/empty if db is null
+  - `/api/export` (GET) — returns 503 if db is null
+- Removed `output: "standalone"` from next.config.ts (caused serverless incompatibility)
+- Cleaned up build/start scripts in package.json
+- Verified: build compiles successfully (4.7s), lint passes, dev server runs
+
+Stage Summary:
+- The 412 error was caused by: `output: standalone` + Prisma failing on missing SQLite file during build
+- Now the app gracefully degrades without a database — no crash, no 412
+- Dashboard, Firebase, ML prediction all work without any database

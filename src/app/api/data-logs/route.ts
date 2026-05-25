@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, skipped: true, reason: 'db_unavailable' }, { status: 200 });
+    }
+
     const body = await request.json();
 
     const dataLog = await db.dataLog.create({
@@ -30,15 +34,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: dataLog }, { status: 201 });
   } catch (error) {
-    // Graceful degradation: if database is unavailable, log and return success
-    // so the rest of the app continues working without crashes
-    console.warn('[DataLogs] DB write skipped (unavailable or not configured):', error);
+    console.warn('[DataLogs] DB write skipped:', error);
     return NextResponse.json({ success: true, skipped: true }, { status: 200 });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, data: [], total: 0, dbUnavailable: true });
+    }
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
@@ -72,8 +78,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: dataLogs, total });
   } catch (error) {
-    // Graceful degradation: return empty data if DB is unavailable
-    console.warn('[DataLogs] DB read skipped (unavailable or not configured):', error);
+    console.warn('[DataLogs] DB read skipped:', error);
     return NextResponse.json({ success: true, data: [], total: 0, dbUnavailable: true });
   }
 }

@@ -4,12 +4,15 @@ import { NextRequest, NextResponse } from 'next/server';
 // GET: Return all notifications ordered by timestamp desc
 export async function GET() {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, data: [], dbUnavailable: true });
+    }
     const notifications = await db.notification.findMany({
       orderBy: { timestamp: 'desc' },
     });
     return NextResponse.json({ success: true, data: notifications });
   } catch (error) {
-    console.warn('[Notifications] DB read skipped (unavailable):', error);
+    console.warn('[Notifications] DB read skipped:', error);
     return NextResponse.json({ success: true, data: [], dbUnavailable: true });
   }
 }
@@ -17,6 +20,10 @@ export async function GET() {
 // POST: Create a new notification
 export async function POST(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, skipped: true }, { status: 200 });
+    }
+
     const body = await request.json();
 
     const notification = await db.notification.create({
@@ -33,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: notification }, { status: 201 });
   } catch (error) {
-    console.warn('[Notifications] DB write skipped (unavailable):', error);
+    console.warn('[Notifications] DB write skipped:', error);
     return NextResponse.json({ success: true, skipped: true }, { status: 200 });
   }
 }
@@ -41,6 +48,10 @@ export async function POST(request: NextRequest) {
 // PUT: Mark all as read or update a specific notification
 export async function PUT(request: NextRequest) {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, skipped: true }, { status: 200 });
+    }
+
     const body = await request.json();
 
     if (body.action === 'markAllRead') {
@@ -63,7 +74,7 @@ export async function PUT(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.warn('[Notifications] DB update skipped (unavailable):', error);
+    console.warn('[Notifications] DB update skipped:', error);
     return NextResponse.json({ success: true, skipped: true }, { status: 200 });
   }
 }
@@ -71,10 +82,13 @@ export async function PUT(request: NextRequest) {
 // DELETE: Delete all notifications
 export async function DELETE() {
   try {
+    if (!db) {
+      return NextResponse.json({ success: true, skipped: true }, { status: 200 });
+    }
     await db.notification.deleteMany();
     return NextResponse.json({ success: true, message: 'All notifications deleted' });
   } catch (error) {
-    console.warn('[Notifications] DB delete skipped (unavailable):', error);
+    console.warn('[Notifications] DB delete skipped:', error);
     return NextResponse.json({ success: true, skipped: true }, { status: 200 });
   }
 }
