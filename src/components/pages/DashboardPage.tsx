@@ -350,7 +350,7 @@ export default function DashboardPage() {
     // Note: We only reach here if transformer is online (checks above returned early)
     // DB logging ONLY happens when ML prediction succeeds — offline NEVER logs
     try {
-      const response = await fetch('/api/predict?XTransformPort=3003', {
+      const response = await fetch('/api/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

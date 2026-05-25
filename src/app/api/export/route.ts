@@ -24,10 +24,19 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
+    if (dataLogs.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No data to export' },
+        { status: 404 }
+      );
+    }
+
     // Generate CSV content
     const headers = [
       'Timestamp',
       'Status',
+      'Fault Type',
+      'Warnings',
       'Primary Voltage (V)',
       'Primary Current (A)',
       'Primary Power (W)',
@@ -39,8 +48,8 @@ export async function GET(request: NextRequest) {
       'Severity',
     ];
 
-    const escapeCSV = (val: string | number) => {
-      const str = String(val);
+    const escapeCSV = (val: string | number | null | undefined) => {
+      const str = val === null || val === undefined ? '-' : String(val);
       if (str.includes(',') || str.includes('"') || str.includes('\n')) {
         return `"${str.replace(/"/g, '""')}"`;
       }
@@ -50,6 +59,8 @@ export async function GET(request: NextRequest) {
     const rows = dataLogs.map((log) => [
       escapeCSV(log.createdAt.toISOString()),
       escapeCSV(log.status),
+      escapeCSV(log.faultType),
+      escapeCSV(log.warnings ? (() => { try { return JSON.parse(log.warnings).join('; '); } catch { return log.warnings; } })() : null),
       escapeCSV(log.primaryVoltage.toFixed(2)),
       escapeCSV(log.primaryCurrent.toFixed(2)),
       escapeCSV(log.primaryPower.toFixed(2)),
@@ -73,10 +84,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error exporting data:', error);
+    console.warn('[Export] DB export skipped (unavailable or not configured):', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to export data' },
-      { status: 500 }
+      { success: false, error: 'Database unavailable in this environment' },
+      { status: 503 }
     );
   }
 }

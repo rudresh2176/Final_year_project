@@ -296,3 +296,31 @@ Stage Summary:
 - Race condition fixed: ML callback re-checks isOfflineRef.current before DB write
 - Status badges: Offline=red, Warning=amber, Online/Normal=green
 - No more data logging when transformer is offline
+---
+Task ID: 2
+Agent: Main Agent
+Task: Full production deployment preparation (Option B)
+
+Work Log:
+- Analyzed ML service (mini-services/ml-service/index.ts) — entirely rule-based TypeScript, no external model files
+- Created `/src/lib/ml-predict.ts` — extracted all prediction logic (classifyVoltage, classifyLoad, classifyLoss, classifyEfficiency, simulateAIPrediction) as a pure library module
+- Rewrote `/api/predict/route.ts` — now runs prediction directly using embedded ML engine (no localhost:3003 call needed)
+- Updated DashboardPage — removed `?XTransformPort=3003` from fetch call, now calls `/api/predict` directly
+- Attempted Prisma libSQL provider — Prisma 6.19.2 doesn't support `provider = "libsql"`, reverted to `provider = "sqlite"`
+- Added graceful degradation to ALL database-dependent API routes:
+  - `/api/data-logs` (POST/GET) — returns empty data if DB unavailable
+  - `/api/notifications` (GET/POST/PUT/DELETE) — returns empty/skipped if DB unavailable
+  - `/api/export` (GET) — returns 503 with message if DB unavailable
+- Updated `next.config.ts` — added experimental.serverActions config
+- Updated `.env` — added production deployment documentation
+- Verified: `bun run lint` passes clean
+- Verified: `bun run build` compiles successfully (8.2s compile, 8 pages, 4 API routes)
+- Verified: Dev server starts cleanly
+
+Stage Summary:
+- **ML Prediction**: Now fully embedded in Next.js — no external micro-service needed
+- **Architecture**: Single deployable Next.js app (was: Next.js + separate Bun ML service)
+- **Database**: SQLite for local dev, graceful degradation for serverless (Data History shows empty)
+- **Firebase**: Still used for real-time ESP32 data (cloud-hosted, works everywhere)
+- **All API routes**: Handle missing database gracefully without crashing
+- **Production build**: Compiles and generates all routes successfully

@@ -37,8 +37,8 @@ model DataLog {
   // Status
   status     String  @default("OFFLINE")
   severity   String  @default("Normal")
-  faultType  String? // e.g. "Over Voltage", "Under Voltage", "Over Load", "High Loss", "Low Efficiency"
-  warnings   String? // JSON string of detected warnings
+  faultType  String?
+  warnings   String?
 
   createdAt  DateTime @default(now())
 }
@@ -46,13 +46,13 @@ model DataLog {
 // Notification entry
 model Notification {
   id          String   @id @default(cuid())
-  type        String   @default("info")     // fault, warning, critical, offline, info
+  type        String   @default("info")
   title       String
   message     String
-  severity    String   @default("Low")       // Low, Medium, High, Normal
+  severity    String   @default("Low")
   isRead      Boolean  @default(false)
-  faults      String?  // JSON string of detected faults
-  warnings    String?  // JSON string of detected warnings
+  faults      String?
+  warnings    String?
   timestamp   DateTime @default(now())
   createdAt   DateTime @default(now())
 }
