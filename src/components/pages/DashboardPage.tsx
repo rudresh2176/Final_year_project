@@ -335,6 +335,7 @@ export default function DashboardPage() {
 
     // --- ML Prediction (best effort) + DB logging with fault type ---
     // Note: We only reach here if transformer is online (checks above returned early)
+    // DB logging ONLY happens when ML prediction succeeds — offline NEVER logs
     try {
       const response = await fetch('/api/predict?XTransformPort=3003', {
         method: 'POST',
@@ -381,7 +382,7 @@ export default function DashboardPage() {
           }
           prevFaultsRef.current = predFaults;
 
-          // Persist to DB with fault type from ML
+          // Only persist to DB when ONLINE and ML prediction succeeded
           fetch('/api/data-logs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -406,63 +407,12 @@ export default function DashboardPage() {
               warnings: predWarnings.length > 0 ? JSON.stringify(predWarnings) : null,
             }),
           }).catch(() => {});
-
-          return; // DB logged with ML data — done
         }
       }
-
-      // ML failed — log with current status (no fault type)
-      fetch('/api/data-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          primaryVoltage: sd.primaryVoltage ?? 0,
-          primaryCurrent: sd.primaryCurrent ?? 0,
-          primaryPower: sd.primaryPower ?? 0,
-          primaryEnergy: sd.primaryEnergy ?? 0,
-          primaryFrequency: sd.primaryFrequency ?? 0,
-          primaryPowerFactor: sd.primaryPowerFactor ?? 0,
-          secondaryVoltage: sd.secondaryVoltage ?? 0,
-          secondaryCurrent: sd.secondaryCurrent ?? 0,
-          secondaryPower: sd.secondaryPower ?? 0,
-          secondaryEnergy: sd.secondaryEnergy ?? 0,
-          secondaryFrequency: sd.secondaryFrequency ?? 0,
-          secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
-          loss: calculatedLoss,
-          efficiency: calculatedEfficiency,
-          status: status,
-          severity: severity,
-          faultType: null,
-          warnings: null,
-        }),
-      }).catch(() => {});
+      // ML failed or no result — do NOT log to DB
     } catch (err) {
       console.error('Prediction pipeline error:', err);
-      // Log even on error
-      fetch('/api/data-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          primaryVoltage: sd.primaryVoltage ?? 0,
-          primaryCurrent: sd.primaryCurrent ?? 0,
-          primaryPower: sd.primaryPower ?? 0,
-          primaryEnergy: sd.primaryEnergy ?? 0,
-          primaryFrequency: sd.primaryFrequency ?? 0,
-          primaryPowerFactor: sd.primaryPowerFactor ?? 0,
-          secondaryVoltage: sd.secondaryVoltage ?? 0,
-          secondaryCurrent: sd.secondaryCurrent ?? 0,
-          secondaryPower: sd.secondaryPower ?? 0,
-          secondaryEnergy: sd.secondaryEnergy ?? 0,
-          secondaryFrequency: sd.secondaryFrequency ?? 0,
-          secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
-          loss: calculatedLoss,
-          efficiency: calculatedEfficiency,
-          status: status,
-          severity: severity,
-          faultType: null,
-          warnings: null,
-        }),
-      }).catch(() => {});
+      // do NOT log to DB on error
     }
   }, [store, forceOffline, status, severity]);
 
