@@ -96,7 +96,7 @@ export default function DashboardPage() {
     const interval = setInterval(() => {
       if (lastDataChangeTimeRef.current === 0) return; // haven't received any data yet
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
-      if (elapsed > 10000) {
+      if (elapsed > 60000) {
         forceOffline();
       }
     }, 1000);
@@ -108,7 +108,7 @@ export default function DashboardPage() {
     let firebaseFired = false;
 
     const primaryRef = ref(database, 'primary');
-    const secondaryRef = ref(database, 'secondary');
+    const secondaryRef = ref(database, 'seconday'); // Note: matches ESP32 Firebase path
 
     const unsubPrimary = onValue(
       primaryRef,
@@ -133,7 +133,7 @@ export default function DashboardPage() {
           primaryPower: data.power ?? 0,
           primaryEnergy: data.energy ?? 0,
           primaryFrequency: data.frequency ?? 0,
-          primaryPowerFactor: data.pf ?? 0,
+          primaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
         };
         setPrimaryParams([
           { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
@@ -141,7 +141,7 @@ export default function DashboardPage() {
           { label: 'Power', value: data.power ?? 0, unit: 'W' },
           { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
           { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-          { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
+          { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
         ]);
       },
       (error) => {
@@ -170,7 +170,7 @@ export default function DashboardPage() {
           secondaryPower: data.power ?? 0,
           secondaryEnergy: data.energy ?? 0,
           secondaryFrequency: data.frequency ?? 0,
-          secondaryPowerFactor: data.pf ?? 0,
+          secondaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
         };
         setSecondaryParams([
           { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
@@ -178,7 +178,7 @@ export default function DashboardPage() {
           { label: 'Power', value: data.power ?? 0, unit: 'W' },
           { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
           { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-          { label: 'Power Factor', value: data.pf ?? 0, unit: 'PF' },
+          { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
         ]);
       },
       (error) => {
@@ -203,10 +203,10 @@ export default function DashboardPage() {
 
   // --- Prediction pipeline (every 2 seconds) ---
   const runPredictionPipeline = useCallback(async () => {
-    // If stale (no data change in 10s), skip
+    // If stale (no data change in 60s), skip
     if (lastDataChangeTimeRef.current > 0) {
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
-      if (elapsed > 10000) {
+      if (elapsed > 60000) {
         forceOffline();
         return;
       }
