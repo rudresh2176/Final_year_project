@@ -62,7 +62,7 @@ export default function DashboardPage() {
   // Refs
   const sensorDataRef = useRef<any>(null);
   const prevFaultsRef = useRef<string[]>([]);
-  // Track Firebase data staleness: if data hasn't changed in 10s, ESP32 is offline
+  // Track Firebase data staleness: if data hasn't changed in 60s, ESP32 is offline
   const prevPrimaryDataRef = useRef<string>('');
   const prevSecondaryDataRef = useRef<string>('');
   const lastDataChangeTimeRef = useRef<number>(0);
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- Staleness check: every second, if no data change in 10s → offline ---
+  // --- Staleness check: every second, if no data change in 60s → offline ---
   useEffect(() => {
     const interval = setInterval(() => {
       if (lastDataChangeTimeRef.current === 0) return; // haven't received any data yet
@@ -255,6 +255,109 @@ export default function DashboardPage() {
       efficiency: calculatedEfficiency,
     };
 
+    // --- Always update live data, charts, and DB when online (independent of ML) ---
+    const timeStr = new Date().toLocaleTimeString();
+
+    // Update live data preview table (last 10 rows)
+    setLiveData((prev) => {
+      const newRow: LiveDataRow = {
+        timestamp: timeStr,
+        status: status,
+        primaryV: sd.primaryVoltage ?? 0,
+        secondaryV: sd.secondaryVoltage ?? 0,
+        primaryI: sd.primaryCurrent ?? 0,
+        secondaryI: sd.secondaryCurrent ?? 0,
+        loss: calculatedLoss,
+        efficiency: calculatedEfficiency,
+      };
+      return [newRow, ...prev].slice(0, 10);
+    });
+
+    // Update charts (last 30 points)
+    setVoltageChartData((prev) => {
+      const point: ChartDataPoint = {
+        time: timeStr,
+        primary: sd.primaryVoltage ?? 0,
+        secondary: sd.secondaryVoltage ?? 0,
+      };
+      return [...prev, point].slice(-30);
+    });
+
+    setCurrentChartData((prev) => {
+      const point: ChartDataPoint = {
+        time: timeStr,
+        primary: sd.primaryCurrent ?? 0,
+        secondary: sd.secondaryCurrent ?? 0,
+      };
+      return [...prev, point].slice(-30);
+    });
+
+    setPowerChartData((prev) => {
+      const point: ChartDataPoint = {
+        time: timeStr,
+        primary: sd.primaryPower ?? 0,
+        secondary: sd.secondaryPower ?? 0,
+      };
+      return [...prev, point].slice(-30);
+    });
+
+    // Update store sensor data
+    store.setSensorData({
+      primaryVoltage: sd.primaryVoltage ?? 0,
+      primaryCurrent: sd.primaryCurrent ?? 0,
+      primaryPower: sd.primaryPower ?? 0,
+      primaryEnergy: sd.primaryEnergy ?? 0,
+      primaryFrequency: sd.primaryFrequency ?? 0,
+      primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+      secondaryVoltage: sd.secondaryVoltage ?? 0,
+      secondaryCurrent: sd.secondaryCurrent ?? 0,
+      secondaryPower: sd.secondaryPower ?? 0,
+      secondaryEnergy: sd.secondaryEnergy ?? 0,
+      secondaryFrequency: sd.secondaryFrequency ?? 0,
+      secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Persist to DB — always log when online (independent of ML prediction)
+    fetch('/api/data-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        primaryVoltage: sd.primaryVoltage ?? 0,
+        primaryCurrent: sd.primaryCurrent ?? 0,
+        primaryPower: sd.primaryPower ?? 0,
+        primaryEnergy: sd.primaryEnergy ?? 0,
+        primaryFrequency: sd.primaryFrequency ?? 0,
+        primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+        secondaryVoltage: sd.secondaryVoltage ?? 0,
+        secondaryCurrent: sd.secondaryCurrent ?? 0,
+        secondaryPower: sd.secondaryPower ?? 0,
+        secondaryEnergy: sd.secondaryEnergy ?? 0,
+        secondaryFrequency: sd.secondaryFrequency ?? 0,
+        secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+        loss: calculatedLoss,
+        efficiency: calculatedEfficiency,
+        status: status,
+        severity: severity,
+      }),
+    }).catch(() => {});
+
+    // Add to recent logs in store
+    const logEntry: DataLogType = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      status: status,
+      primaryVoltage: sd.primaryVoltage ?? 0,
+      secondaryVoltage: sd.secondaryVoltage ?? 0,
+      primaryCurrent: sd.primaryCurrent ?? 0,
+      secondaryCurrent: sd.secondaryCurrent ?? 0,
+      loss: calculatedLoss,
+      efficiency: calculatedEfficiency,
+      severity: severity,
+    };
+    store.addRecentLog(logEntry);
+
+    // --- ML Prediction (best effort — faults/warnings depend on this) ---
     try {
       const response = await fetch('/api/predict?XTransformPort=3003', {
         method: 'POST',
@@ -285,22 +388,6 @@ export default function DashboardPage() {
           severity: predSeverity,
         });
 
-        store.setSensorData({
-          primaryVoltage: sd.primaryVoltage ?? 0,
-          primaryCurrent: sd.primaryCurrent ?? 0,
-          primaryPower: sd.primaryPower ?? 0,
-          primaryEnergy: sd.primaryEnergy ?? 0,
-          primaryFrequency: sd.primaryFrequency ?? 0,
-          primaryPowerFactor: sd.primaryPowerFactor ?? 0,
-          secondaryVoltage: sd.secondaryVoltage ?? 0,
-          secondaryCurrent: sd.secondaryCurrent ?? 0,
-          secondaryPower: sd.secondaryPower ?? 0,
-          secondaryEnergy: sd.secondaryEnergy ?? 0,
-          secondaryFrequency: sd.secondaryFrequency ?? 0,
-          secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
-          timestamp: new Date().toISOString(),
-        });
-
         const prevFaults = prevFaultsRef.current;
         const newFaults = predFaults.filter((f: string) => !prevFaults.includes(f));
         if (newFaults.length > 0) {
@@ -317,91 +404,11 @@ export default function DashboardPage() {
           });
         }
         prevFaultsRef.current = predFaults;
-
-        const logEntry: DataLogType = {
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-          status: predStatus,
-          primaryVoltage: sd.primaryVoltage ?? 0,
-          secondaryVoltage: sd.secondaryVoltage ?? 0,
-          primaryCurrent: sd.primaryCurrent ?? 0,
-          secondaryCurrent: sd.secondaryCurrent ?? 0,
-          loss: calculatedLoss,
-          efficiency: calculatedEfficiency,
-          severity: predSeverity,
-        };
-        store.addRecentLog(logEntry);
-
-        const timeStr = new Date().toLocaleTimeString();
-        setLiveData((prev) => {
-          const newRow: LiveDataRow = {
-            timestamp: timeStr,
-            status: predStatus,
-            primaryV: sd.primaryVoltage ?? 0,
-            secondaryV: sd.secondaryVoltage ?? 0,
-            primaryI: sd.primaryCurrent ?? 0,
-            secondaryI: sd.secondaryCurrent ?? 0,
-            loss: calculatedLoss,
-            efficiency: calculatedEfficiency,
-          };
-          return [newRow, ...prev].slice(0, 10);
-        });
-
-        setVoltageChartData((prev) => {
-          const point: ChartDataPoint = {
-            time: timeStr,
-            primary: sd.primaryVoltage ?? 0,
-            secondary: sd.secondaryVoltage ?? 0,
-          };
-          return [...prev, point].slice(-30);
-        });
-
-        setCurrentChartData((prev) => {
-          const point: ChartDataPoint = {
-            time: timeStr,
-            primary: sd.primaryCurrent ?? 0,
-            secondary: sd.secondaryCurrent ?? 0,
-          };
-          return [...prev, point].slice(-30);
-        });
-
-        setPowerChartData((prev) => {
-          const point: ChartDataPoint = {
-            time: timeStr,
-            primary: sd.primaryPower ?? 0,
-            secondary: sd.secondaryPower ?? 0,
-          };
-          return [...prev, point].slice(-30);
-        });
-
-        // Persist to DB via API
-        fetch('/api/data-logs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            primaryVoltage: sd.primaryVoltage ?? 0,
-            primaryCurrent: sd.primaryCurrent ?? 0,
-            primaryPower: sd.primaryPower ?? 0,
-            primaryEnergy: sd.primaryEnergy ?? 0,
-            primaryFrequency: sd.primaryFrequency ?? 0,
-            primaryPowerFactor: sd.primaryPowerFactor ?? 0,
-            secondaryVoltage: sd.secondaryVoltage ?? 0,
-            secondaryCurrent: sd.secondaryCurrent ?? 0,
-            secondaryPower: sd.secondaryPower ?? 0,
-            secondaryEnergy: sd.secondaryEnergy ?? 0,
-            secondaryFrequency: sd.secondaryFrequency ?? 0,
-            secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
-            loss: calculatedLoss,
-            efficiency: calculatedEfficiency,
-            status: predStatus,
-            severity: predSeverity,
-          }),
-        }).catch(() => {});
       }
     } catch (err) {
       console.error('Prediction pipeline error:', err);
     }
-  }, [store, forceOffline]);
+  }, [store, forceOffline, status, severity]);
 
   // --- Run prediction pipeline every 2 seconds ---
   useEffect(() => {

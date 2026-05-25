@@ -209,3 +209,30 @@ Stage Summary:
 - Notifications page: real-time store + persisted API merge, filter tabs, expandable cards, mark read, clear all
 - Session page: date range filtering, quick filters, summary stats, enterprise table with pagination, dual CSV export
 - Zero lint errors, successful compilation
+
+---
+Task ID: 5
+Agent: Main Orchestrator
+Task: Fix data logging, verify Firebase key/staleness, and seed sample data
+
+Work Log:
+- Diagnosed root cause of data not logging: data persistence, live data preview updates, and chart updates were ALL inside `if (result.success && result.data)` block — if ML service failed, nothing got logged
+- Fixed DashboardPage.tsx: Moved data logging (POST /api/data-logs), live data preview table, chart data updates, store sensor data updates, and recent log additions OUTSIDE the ML prediction success block
+- ML prediction is now "best effort" — only fault/warning/status/severity updates depend on ML service response
+- Verified Firebase key is already `'seconday'` (line 111) — matching ESP32 typo
+- Verified staleness threshold is already 60000ms (60 seconds) — per user request
+- Updated stale comments from "10s" to "60s"
+- Fixed useCallback dependency array: added `status` and `severity` as dependencies
+- Cleared existing DataLog records and seeded 27 sample entries across 7 days:
+  - 20 Normal readings, 5 Warning readings, 2 Fault readings
+  - Realistic single-phase 230V/120V 2KVA transformer values
+  - Spread across different hours of each day
+  - Small random noise added for realism
+- Verified seeded data accessible via /api/data-logs API endpoint
+- ESLint passes with zero errors
+
+Stage Summary:
+- Data logging now works independently of ML service availability
+- Firebase key confirmed as `seconday`, staleness at 60 seconds
+- 27 sample records seeded in database for Data History verification
+- Live Data Preview and Data History page will now show data correctly
