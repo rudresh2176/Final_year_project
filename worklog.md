@@ -272,3 +272,27 @@ Stage Summary:
 - CSV export includes fault type and warnings data
 - 42 seeded records covering all 5 fault types, all 5 warning types, normal, and combined faults
 - Dashboard pipeline refactored to include fault type in DB logging
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix offline data logging — ensure NO data is logged or displayed when system status is OFFLINE
+
+Work Log:
+- Analyzed the screenshot showing Live Data Preview with all "Offline" status rows while data was being displayed
+- Identified 3 root causes:
+  1. **Race condition**: Async ML callback didn't re-check offline state before DB logging
+  2. **Stale closure**: `isOffline` React state captured at callback creation time — stale in async callbacks
+  3. **Status bug**: `status` state only updated by ML success; if ML fails, status stays "Offline" forever in Live Data Preview
+- Added `isOfflineRef` (useRef) for synchronous offline tracking — avoids stale closure issues
+- Updated `forceOffline()` to set `isOfflineRef.current = true` AND clear live data/charts
+- Added `isOfflineRef.current` check inside ML callback BEFORE DB logging (line 400)
+- Added `isOfflineRef.current` guard in live data preview, voltage chart, current chart, power chart updates
+- Fixed Live Data Preview status: shows "Online" when connected (not stale "Offline")
+- Updated statusBadgeClass in LiveDataPreview: "Offline" now shows red badge (was incorrectly green)
+- Verified: lint passes clean, dev server compiles successfully
+
+Stage Summary:
+- When system goes OFFLINE: live data table clears, charts clear, all data updates stop
+- Race condition fixed: ML callback re-checks isOfflineRef.current before DB write
+- Status badges: Offline=red, Warning=amber, Online/Normal=green
+- No more data logging when transformer is offline

@@ -66,9 +66,12 @@ export default function DashboardPage() {
   const prevPrimaryDataRef = useRef<string>('');
   const prevSecondaryDataRef = useRef<string>('');
   const lastDataChangeTimeRef = useRef<number>(0);
+  // Ref for offline state — avoids stale closure issues in async callbacks
+  const isOfflineRef = useRef<boolean>(true);
 
   // --- Force offline: set all state to offline mode ---
   const forceOffline = useCallback(() => {
+    isOfflineRef.current = true;
     setIsOffline(true);
     setStatus('Offline');
     setSeverity('Normal');
@@ -79,6 +82,11 @@ export default function DashboardPage() {
     setLossStatus('Normal');
     setPrimaryParams(zeroParams);
     setSecondaryParams(zeroParams);
+    // Clear live data preview and charts when going offline
+    setLiveData([]);
+    setVoltageChartData([]);
+    setCurrentChartData([]);
+    setPowerChartData([]);
   }, []);
 
   // --- Live clock (every second) ---
@@ -230,6 +238,7 @@ export default function DashboardPage() {
     }
 
     // Transformer is online — set online status
+    isOfflineRef.current = false;
     setIsOffline(false);
 
     const inputPower = sd.primaryPower ?? 0;
@@ -258,11 +267,12 @@ export default function DashboardPage() {
     // --- Only update UI and log data when TRANSFORMER IS ONLINE ---
     const timeStr = new Date().toLocaleTimeString();
 
-    // Update live data preview table (last 10 rows)
+    // Update live data preview table (last 10 rows) — only when online
     setLiveData((prev) => {
+      if (isOfflineRef.current) return prev;
       const newRow: LiveDataRow = {
         timestamp: timeStr,
-        status: status,
+        status: status === 'Offline' ? 'Online' : status,
         primaryV: sd.primaryVoltage ?? 0,
         secondaryV: sd.secondaryVoltage ?? 0,
         primaryI: sd.primaryCurrent ?? 0,
@@ -273,8 +283,9 @@ export default function DashboardPage() {
       return [newRow, ...prev].slice(0, 10);
     });
 
-    // Update charts (last 30 points)
+    // Update charts (last 30 points) — only when online
     setVoltageChartData((prev) => {
+      if (isOfflineRef.current) return prev;
       const point: ChartDataPoint = {
         time: timeStr,
         primary: sd.primaryVoltage ?? 0,
@@ -284,6 +295,7 @@ export default function DashboardPage() {
     });
 
     setCurrentChartData((prev) => {
+      if (isOfflineRef.current) return prev;
       const point: ChartDataPoint = {
         time: timeStr,
         primary: sd.primaryCurrent ?? 0,
@@ -293,6 +305,7 @@ export default function DashboardPage() {
     });
 
     setPowerChartData((prev) => {
+      if (isOfflineRef.current) return prev;
       const point: ChartDataPoint = {
         time: timeStr,
         primary: sd.primaryPower ?? 0,
@@ -382,6 +395,13 @@ export default function DashboardPage() {
           }
           prevFaultsRef.current = predFaults;
 
+          // Re-check offline state INSIDE async callback — prevents race condition
+          // where system goes offline while ML was in-flight
+          if (isOfflineRef.current) {
+            console.log('[Pipeline] Skipping DB log — system went offline during ML prediction');
+            return;
+          }
+
           // Only persist to DB when ONLINE and ML prediction succeeded
           fetch('/api/data-logs', {
             method: 'POST',
@@ -409,7 +429,8 @@ export default function DashboardPage() {
           }).catch(() => {});
         }
       }
-      // ML failed or no result — do NOT log to DB
+      // ML failed or no result — do NOT log to DB. Re-check offline too.
+      if (isOfflineRef.current) return;
     } catch (err) {
       console.error('Prediction pipeline error:', err);
       // do NOT log to DB on error
