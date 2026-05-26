@@ -438,3 +438,25 @@ Stage Summary:
 - **Prisma DB logging fixed**: `lossPercentage` and `loadPercentage` columns now write successfully
 - **No more zero flash**: forceOffline no longer resets sensor display to zeros
 - **Staleness check stable**: Won't re-trigger when already offline
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix secondary Firebase data not displaying on the monitoring dashboard
+
+Work Log:
+- Analyzed the uploaded Firebase screenshot using VLM to confirm secondary data structure (current, energy, frequency, power, powerFactor, voltage)
+- Read DashboardPage.tsx, store.ts, firebase.ts, ParameterGrid.tsx to trace the data flow
+- Identified ROOT CAUSE: When the Firebase listener useEffect re-runs (due to config change from Zustand persist hydration), the dedup refs (prevPrimaryDataRef, prevSecondaryDataRef) were NOT being reset. If secondary data in Firebase was static (not changing), the onValue immediate fire would be blocked by the dedup check while primary kept updating (because ESP32 actively pushes new primary data)
+- Applied fix: Reset both dedup refs to '' at the start of the useEffect when it re-runs
+- Added comprehensive console.log debugging for secondary listener (raw data, no-data case, dedup skip, new data processing)
+- Added a fallback mechanism: if secondary onValue never fires within 3 seconds, a direct get() read is performed as a safety net
+- Refactored listener callbacks into handlePrimaryData/handleSecondaryData helper functions shared between onValue and fallback
+- Fixed showConfigModal state: changed from useState(!config) to a useEffect that properly auto-closes when config hydrates from localStorage
+- Verified dev server compiles with no errors, lint passes cleanly
+
+Stage Summary:
+- Fixed secondary data not showing on dashboard by resetting dedup refs on effect re-run
+- Added 3-layer safety: dedup reset + console.log debugging + get() fallback
+- Fixed config modal auto-close after Zustand hydration
+- File modified: src/components/pages/DashboardPage.tsx

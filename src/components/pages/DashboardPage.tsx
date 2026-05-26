@@ -89,8 +89,17 @@ export default function DashboardPage() {
   // Live data table (max 10 rows)
   const [liveData, setLiveData] = useState<LiveDataRow[]>([]);
 
-  // Config modal state
-  const [showConfigModal, setShowConfigModal] = useState(!config);
+  // Config modal state — only show if no config; auto-close when config hydrates
+  const [showConfigModal, setShowConfigModal] = useState(false);
+
+  // Show config modal on mount if not configured
+  useEffect(() => {
+    if (!config) {
+      setShowConfigModal(true);
+    } else {
+      setShowConfigModal(false); // Auto-close when config hydrates from localStorage
+    }
+  }, [config]);
 
   // Refs
   const sensorDataRef = useRef<any>(null);
@@ -160,10 +169,71 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!config) return; // Don't listen until transformer is configured
 
-    let firebaseFired = false;
+    // CRITICAL: Reset dedup refs when effect re-runs so the first onValue
+    // trigger always passes through (even if data hasn't changed since last run).
+    // Without this, a re-attach after config change would skip static secondary data.
+    prevPrimaryDataRef.current = '';
+    prevSecondaryDataRef.current = '';
+
+    let primaryFired = false;
+    let secondaryFired = false;
 
     const primaryRef = ref(database, 'primary');
-    const secondaryRef = ref(database, 'secondary'); // CORRECTED: was 'seconday'
+    const secondaryRef = ref(database, 'secondary');
+
+    const handlePrimaryData = (data: any) => {
+      primaryFired = true;
+
+      lastDataChangeTimeRef.current = Date.now();
+      setLoading(false);
+      isOfflineRef.current = false;
+      setIsOffline(false);
+
+      sensorDataRef.current = {
+        ...sensorDataRef.current,
+        primaryVoltage: data.voltage ?? 0,
+        primaryCurrent: data.current ?? 0,
+        primaryPower: data.power ?? 0,
+        primaryEnergy: data.energy ?? 0,
+        primaryFrequency: data.frequency ?? 0,
+        primaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
+      };
+      setPrimaryParams([
+        { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
+        { label: 'Current', value: data.current ?? 0, unit: 'A' },
+        { label: 'Power', value: data.power ?? 0, unit: 'W' },
+        { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
+        { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
+        { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
+      ]);
+    };
+
+    const handleSecondaryData = (data: any) => {
+      secondaryFired = true;
+
+      lastDataChangeTimeRef.current = Date.now();
+      setLoading(false);
+      isOfflineRef.current = false;
+      setIsOffline(false);
+
+      sensorDataRef.current = {
+        ...sensorDataRef.current,
+        secondaryVoltage: data.voltage ?? 0,
+        secondaryCurrent: data.current ?? 0,
+        secondaryPower: data.power ?? 0,
+        secondaryEnergy: data.energy ?? 0,
+        secondaryFrequency: data.frequency ?? 0,
+        secondaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
+      };
+      setSecondaryParams([
+        { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
+        { label: 'Current', value: data.current ?? 0, unit: 'A' },
+        { label: 'Power', value: data.power ?? 0, unit: 'W' },
+        { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
+        { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
+        { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
+      ]);
+    };
 
     const unsubPrimary = onValue(
       primaryRef,
@@ -175,30 +245,8 @@ export default function DashboardPage() {
         if (dataStr === prevPrimaryDataRef.current) return;
         prevPrimaryDataRef.current = dataStr;
 
-        // Data changed — mark as live and bring system online
-        lastDataChangeTimeRef.current = Date.now();
-        firebaseFired = true;
-        setLoading(false);
-        isOfflineRef.current = false;
-        setIsOffline(false);
-
-        sensorDataRef.current = {
-          ...sensorDataRef.current,
-          primaryVoltage: data.voltage ?? 0,
-          primaryCurrent: data.current ?? 0,
-          primaryPower: data.power ?? 0,
-          primaryEnergy: data.energy ?? 0,
-          primaryFrequency: data.frequency ?? 0,
-          primaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
-        };
-        setPrimaryParams([
-          { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
-          { label: 'Current', value: data.current ?? 0, unit: 'A' },
-          { label: 'Power', value: data.power ?? 0, unit: 'W' },
-          { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
-          { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-          { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
-        ]);
+        console.log('[Firebase Primary] Data received:', data);
+        handlePrimaryData(data);
       },
       (error) => {
         console.error('Firebase primary listener error:', error);
@@ -209,48 +257,53 @@ export default function DashboardPage() {
       secondaryRef,
       (snapshot) => {
         const data = snapshot.val();
-        if (!data) return;
+        console.log('[Firebase Secondary] Raw snapshot.val():', data);
+        if (!data) {
+          console.log('[Firebase Secondary] No data at /secondary path');
+          return;
+        }
 
         const dataStr = JSON.stringify(data);
-        if (dataStr === prevSecondaryDataRef.current) return;
+        if (dataStr === prevSecondaryDataRef.current) {
+          console.log('[Firebase Secondary] Data unchanged, skipping dedup');
+          return;
+        }
         prevSecondaryDataRef.current = dataStr;
 
-        lastDataChangeTimeRef.current = Date.now();
-        firebaseFired = true;
-        setLoading(false);
-        isOfflineRef.current = false;
-        setIsOffline(false);
-
-        sensorDataRef.current = {
-          ...sensorDataRef.current,
-          secondaryVoltage: data.voltage ?? 0,
-          secondaryCurrent: data.current ?? 0,
-          secondaryPower: data.power ?? 0,
-          secondaryEnergy: data.energy ?? 0,
-          secondaryFrequency: data.frequency ?? 0,
-          secondaryPowerFactor: data.pf ?? data.powerFactor ?? 0,
-        };
-        setSecondaryParams([
-          { label: 'Voltage', value: data.voltage ?? 0, unit: 'V' },
-          { label: 'Current', value: data.current ?? 0, unit: 'A' },
-          { label: 'Power', value: data.power ?? 0, unit: 'W' },
-          { label: 'Energy', value: data.energy ?? 0, unit: 'Wh' },
-          { label: 'Frequency', value: data.frequency ?? 0, unit: 'Hz' },
-          { label: 'Power Factor', value: data.pf ?? data.powerFactor ?? 0, unit: 'PF' },
-        ]);
+        console.log('[Firebase Secondary] Processing new data:', data);
+        handleSecondaryData(data);
       },
       (error) => {
         console.error('Firebase secondary listener error:', error);
       }
     );
 
-    // If no data at all from Firebase within 5s, confirm offline
-    const timeout = setTimeout(() => {
-      if (!firebaseFired) {
+    // If no data from Firebase within 5s, confirm offline.
+    // Also do a one-time get() fallback for any side that didn't fire.
+    const timeout = setTimeout(async () => {
+      if (!primaryFired && !secondaryFired) {
         forceOffline();
         setLoading(false);
       }
-    }, 5000);
+
+      // Fallback: If secondary didn't fire via onValue, do a direct read.
+      // This handles edge cases where onValue skips the initial fire.
+      if (!secondaryFired) {
+        console.log('[Firebase Fallback] Secondary onValue never fired, doing direct get()...');
+        try {
+          const { get } = await import('firebase/database');
+          const snapshot = await get(secondaryRef);
+          const data = snapshot.val();
+          console.log('[Firebase Fallback] Secondary get() result:', data);
+          if (data) {
+            prevSecondaryDataRef.current = JSON.stringify(data);
+            handleSecondaryData(data);
+          }
+        } catch (err) {
+          console.error('[Firebase Fallback] Secondary get() error:', err);
+        }
+      }
+    }, 3000);
 
     return () => {
       unsubPrimary();
