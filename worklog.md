@@ -367,3 +367,52 @@ Stage Summary:
 - **Online recovery**: Only Firebase Realtime Database listener can bring system back online (when genuinely new data arrives)
 - **No more race conditions**: The isOfflineRef gate is checked at 3 layers to prevent any data leak
 - **User-facing**: Offline banner shows, live data table shows "No data recorded yet", charts are empty, DB receives zero records
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Major refactoring — Dynamic transformer configuration, Firebase key fix, load percentage, and session-based monitoring
+
+Work Log:
+- **Firebase key fix**: Changed `seconday` → `secondary` in DashboardPage.tsx Firebase listener
+- **Zustand store update**: Added `TransformerConfig` type with KVA, voltages, rated currents, voltage limits. Added `persist` middleware to persist transformer config to localStorage
+- **Created ConfigModal component** (`/src/components/config/ConfigModal.tsx`):
+  - Enterprise SaaS modal with centered card, Building2 icon, subtle animations
+  - Required fields: KVA (supports decimals), Primary Voltage, Secondary Voltage
+  - Optional fields: Transformer Name, Location
+  - Real-time preview of calculated values (rated currents, voltage ranges)
+  - Validation: no empty/zero values allowed
+  - Saves to Firebase (`Transformer_Config`) and Zustand store
+  - Supports both initial config and reconfiguration modes
+- **Created TransformerProfileCard** (`/src/components/dashboard/TransformerProfileCard.tsx`):
+  - Shows transformer name, location, rating, voltages, rated currents
+  - Online/Offline status badge
+  - "Change Transformer" button
+- **Rewrote ML prediction engine** (`/src/lib/ml-predict.ts`):
+  - Fully dynamic — accepts `TransformerThresholds` parameter
+  - Voltage limits calculated from config: Vlower = Vrated × 0.9, Vupper = Vrated × 1.1
+  - Loss classification now uses loss percentage (<5% normal, 5-10% warning, >10% fault)
+  - Load percentage calculated from rated primary current
+  - Backward compatible with default 2KVA thresholds if no config
+- **Updated predict API route**: Accepts `thresholds` in request body, passes to predict()
+- **Rewrote DashboardPage.tsx**:
+  - Shows "No Transformer Configured" when no config exists (with "Configure Transformer" button)
+  - 4-layer pipeline gate: no config → offline → stale → all-zeros
+  - Dynamic calculations: Pin = Vp×Ip×PF, Pout = Vs×Is×PF, Loss = Pin−Pout, Loss%, Load%, Efficiency
+  - TransformerProfileCard at top with "Change Transformer" button
+  - New LoadPercentageCard showing load % with progress bar and rated current formula
+  - LossCard updated with loss percentage display
+  - Power calculations now use V×I×PF formula instead of raw Firebase power values
+- **Added database columns**: `lossPercentage` (Float) and `loadPercentage` (Float) to Prisma schema
+- **Updated data-logs API**: Stores lossPercentage and loadPercentage
+- **Updated LossCard**: Shows loss percentage progress bar alongside watts value
+- **Config persistence**: Transformer config persisted to localStorage via Zustand persist middleware
+
+Stage Summary:
+- **Fully dynamic monitoring**: Any single-phase transformer can be configured (1KVA, 2KVA, 5KVA, 10KVA, or custom)
+- **Mandatory configuration**: Dashboard locked until transformer specs entered
+- **Session-based**: Changing transformer dynamically recalculates all thresholds
+- **Firebase key corrected**: `secondary` (was `seconday`)
+- **New formulas**: V×I×PF for power, percentage-based loss/load classification
+- **New UI**: Config modal, transformer profile card, load percentage card, "Change Transformer" button
+- **Zero lint errors, successful compilation**

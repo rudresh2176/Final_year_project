@@ -2,7 +2,7 @@
  * TransMonitor ML Prediction Engine
  *
  * Embedded rule-based Random Forest Classifier for transformer fault detection.
- * Migrated from the standalone ml-service micro-service for deployment portability.
+ * Fully dynamic — thresholds are calculated from transformer configuration.
  *
  * Supports 5 fault types:
  *   - Over Voltage
@@ -32,6 +32,19 @@ interface SensorData {
   loadPercentage: number;
 }
 
+export interface TransformerThresholds {
+  kva: number;
+  primaryVoltage: number;
+  secondaryVoltage: number;
+  ratedPrimaryCurrent: number;
+  ratedSecondaryCurrent: number;
+  // Dynamic voltage limits
+  primaryVoltageLower: number;
+  primaryVoltageUpper: number;
+  secondaryVoltageLower: number;
+  secondaryVoltageUpper: number;
+}
+
 interface ClassificationResult {
   voltageStatus: string;
   loadStatus: string;
@@ -49,75 +62,98 @@ export interface PredictResponse {
   details: ClassificationResult;
 }
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Default Thresholds (for backward compat if no config) ──────────────────
 
-const RATED_CURRENT = 8.7; // Primary rated current: 2KVA / 230V = 8.7A
+const DEFAULT_THRESHOLDS: TransformerThresholds = {
+  kva: 2,
+  primaryVoltage: 230,
+  secondaryVoltage: 120,
+  ratedPrimaryCurrent: 8.7,
+  ratedSecondaryCurrent: 16.67,
+  primaryVoltageLower: 207,
+  primaryVoltageUpper: 253,
+  secondaryVoltageLower: 108,
+  secondaryVoltageUpper: 132,
+};
 
-const VOLTAGE = {
-  NORMAL_LOW: 220,
-  NORMAL_HIGH: 240,
-  WARNING_LOW: 207,
-  WARNING_HIGH: 253,
-} as const;
+// ─── Classification Functions (dynamic thresholds) ──────────────────────────
 
-const LOSS = {
-  NORMAL: 150,
-  WARNING: 300,
-} as const;
+function classifyVoltage(
+  primaryVoltage: number,
+  secondaryVoltage: number,
+  t: TransformerThresholds
+) {
+  // Check primary voltage against primary limits
+  const pvLow = t.primaryVoltageLower;
+  const pvHigh = t.primaryVoltageUpper;
+  // Check secondary voltage against secondary limits
+  const svLow = t.secondaryVoltageLower;
+  const svHigh = t.secondaryVoltageUpper;
 
-const EFFICIENCY = {
-  NORMAL: 90,
-  WARNING: 80,
-} as const;
+  const pvStatus = voltageRangeStatus(primaryVoltage, pvLow, pvHigh);
+  const svStatus = voltageRangeStatus(secondaryVoltage, svLow, svHigh);
 
-const LOAD = {
-  NORMAL: 95,
-  WARNING: 100,
-} as const;
-
-// ─── Classification Functions ───────────────────────────────────────────────
-
-function classifyVoltage(voltage: number) {
-  if (voltage >= VOLTAGE.NORMAL_LOW && voltage <= VOLTAGE.NORMAL_HIGH) {
-    return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
+  // Return the worse status
+  if (pvStatus.fault || svStatus.fault) {
+    const faultNames: string[] = [];
+    if (pvStatus.fault) faultNames.push(pvStatus.fault);
+    if (svStatus.fault) faultNames.push(svStatus.fault);
+    return { status: "Voltage Fault", isFault: true, isWarning: false, faultName: faultNames.join(", "), warningName: "" };
   }
-  if (voltage > VOLTAGE.NORMAL_HIGH && voltage <= VOLTAGE.WARNING_HIGH) {
-    return { status: "High Voltage Warning", isFault: false, isWarning: true, faultName: "", warningName: "High Voltage Warning" };
+  if (pvStatus.warning || svStatus.warning) {
+    const warningNames: string[] = [];
+    if (pvStatus.warning) warningNames.push(pvStatus.warning);
+    if (svStatus.warning) warningNames.push(svStatus.warning);
+    return { status: "Voltage Warning", isFault: false, isWarning: true, faultName: "", warningName: warningNames.join(", ") };
   }
-  if (voltage >= VOLTAGE.WARNING_LOW && voltage < VOLTAGE.NORMAL_LOW) {
-    return { status: "Low Voltage Warning", isFault: false, isWarning: true, faultName: "", warningName: "Low Voltage Warning" };
+  return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
+}
+
+function voltageRangeStatus(voltage: number, lowerLimit: number, upperLimit: number) {
+  const range = upperLimit - lowerLimit;
+  const warningMargin = range * 0.15; // 15% of range as warning buffer
+
+  if (voltage >= lowerLimit && voltage <= upperLimit) {
+    return { fault: "", warning: "" };
   }
-  if (voltage > VOLTAGE.WARNING_HIGH) {
-    return { status: "Over Voltage Fault", isFault: true, isWarning: false, faultName: "Over Voltage", warningName: "" };
+  if (voltage > upperLimit && voltage <= upperLimit + warningMargin) {
+    return { fault: "", warning: "High Voltage Warning" };
   }
-  return { status: "Under Voltage Fault", isFault: true, isWarning: false, faultName: "Under Voltage", warningName: "" };
+  if (voltage < lowerLimit && voltage >= lowerLimit - warningMargin) {
+    return { fault: "", warning: "Low Voltage Warning" };
+  }
+  if (voltage > upperLimit + warningMargin) {
+    return { fault: "Over Voltage", warning: "" };
+  }
+  return { fault: "Under Voltage", warning: "" };
 }
 
 function classifyLoad(loadPercentage: number) {
-  if (loadPercentage <= LOAD.NORMAL) {
+  if (loadPercentage <= 95) {
     return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
   }
-  if (loadPercentage > LOAD.NORMAL && loadPercentage <= LOAD.WARNING) {
+  if (loadPercentage > 95 && loadPercentage <= 100) {
     return { status: "Over Load Warning", isFault: false, isWarning: true, faultName: "", warningName: "Over Load Warning" };
   }
   return { status: "Over Load Fault", isFault: true, isWarning: false, faultName: "Over Load", warningName: "" };
 }
 
-function classifyLoss(loss: number) {
-  if (loss <= LOSS.NORMAL) {
+function classifyLoss(lossPercentage: number) {
+  // lossPercentage = ((Pin - Pout) / Pin) * 100
+  if (lossPercentage < 5) {
     return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
   }
-  if (loss > LOSS.NORMAL && loss <= LOSS.WARNING) {
+  if (lossPercentage >= 5 && lossPercentage <= 10) {
     return { status: "High Loss Warning", isFault: false, isWarning: true, faultName: "", warningName: "High Loss Warning" };
   }
   return { status: "High Loss Fault", isFault: true, isWarning: false, faultName: "High Loss", warningName: "" };
 }
 
 function classifyEfficiency(efficiency: number) {
-  if (efficiency >= EFFICIENCY.NORMAL) {
+  if (efficiency >= 90) {
     return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
   }
-  if (efficiency >= EFFICIENCY.WARNING && efficiency < EFFICIENCY.NORMAL) {
+  if (efficiency >= 80 && efficiency < 90) {
     return { status: "Low Efficiency Warning", isFault: false, isWarning: true, faultName: "", warningName: "Low Efficiency Warning" };
   }
   return { status: "Low Efficiency Fault", isFault: true, isWarning: false, faultName: "Low Efficiency", warningName: "" };
@@ -134,38 +170,31 @@ function simulateAIPrediction(
     load: ReturnType<typeof classifyLoad>;
     loss: ReturnType<typeof classifyLoss>;
     efficiency: ReturnType<typeof classifyEfficiency>;
-  }
+  },
+  t: TransformerThresholds
 ): { prediction: string; confidence: number } {
   const hasIssues = faults.length > 0 || warnings.length > 0;
   const anomalies: string[] = [];
 
-  // Voltage proximity analysis
-  const voltageDistLow = Math.abs(data.primaryVoltage - VOLTAGE.WARNING_LOW);
-  const voltageDistHigh = Math.abs(data.primaryVoltage - VOLTAGE.WARNING_HIGH);
-  const voltageDistNormLow = Math.abs(data.primaryVoltage - VOLTAGE.NORMAL_LOW);
-  const voltageDistNormHigh = Math.abs(data.primaryVoltage - VOLTAGE.NORMAL_HIGH);
-
+  // Voltage proximity analysis (primary)
+  const voltageDistLow = Math.abs(data.primaryVoltage - t.primaryVoltageLower);
+  const voltageDistHigh = Math.abs(data.primaryVoltage - t.primaryVoltageUpper);
   if (voltageDistLow < 5 || voltageDistHigh < 5) {
     anomalies.push("Voltage near critical threshold");
   }
-  if (voltageDistNormLow < 3 && !classifications.voltage.isFault) {
-    anomalies.push("Voltage trending toward warning zone");
-  }
 
   // Load proximity
-  const loadDistNormal = Math.abs(data.loadPercentage - LOAD.NORMAL);
-  const loadDistWarning = Math.abs(data.loadPercentage - LOAD.WARNING);
-  if (loadDistWarning < 3 || loadDistNormal < 5) {
+  if (Math.abs(data.loadPercentage - 95) < 5 || Math.abs(data.loadPercentage - 100) < 3) {
     anomalies.push("Load approaching threshold");
   }
 
   // Loss proximity
-  if (Math.abs(data.loss - LOSS.NORMAL) < 15) {
+  if (data.loss >= 4) {
     anomalies.push("Loss trending upward");
   }
 
   // Efficiency proximity
-  if (Math.abs(data.efficiency - EFFICIENCY.NORMAL) < 3) {
+  if (Math.abs(data.efficiency - 90) < 3) {
     anomalies.push("Efficiency degradation pattern detected");
   }
 
@@ -195,11 +224,8 @@ function simulateAIPrediction(
     const minDist = Math.min(
       voltageDistLow,
       voltageDistHigh,
-      voltageDistNormLow,
-      voltageDistNormHigh,
-      Math.abs(data.loss - LOSS.NORMAL),
-      Math.abs(data.efficiency - EFFICIENCY.NORMAL),
-      Math.abs(data.loadPercentage - LOAD.NORMAL)
+      Math.abs(data.efficiency - 90),
+      Math.abs(data.loadPercentage - 95)
     );
     confidence = Math.min(0.99, 0.85 + (minDist / 50) * 0.14);
   } else {
@@ -218,20 +244,34 @@ function simulateAIPrediction(
 
 // ─── Main Prediction Function ──────────────────────────────────────────────
 
-export function predict(sensorData: Record<string, unknown>): PredictResponse {
-  const primaryVoltage = Number(sensorData.primaryVoltage) || 230;
+export function predict(
+  sensorData: Record<string, unknown>,
+  thresholds?: TransformerThresholds
+): PredictResponse {
+  const t = thresholds || DEFAULT_THRESHOLDS;
+
+  const primaryVoltage = Number(sensorData.primaryVoltage) || 0;
   const primaryCurrent = Number(sensorData.primaryCurrent) || 0;
+  const secondaryVoltage = Number(sensorData.secondaryVoltage) || 0;
+  const secondaryCurrent = Number(sensorData.secondaryCurrent) || 0;
   const loss = Number(sensorData.loss) || 0;
   const efficiency = Number(sensorData.efficiency) || 100;
+  const lossPercentage = Number(sensorData.lossPercentage) || 0;
 
+  // Calculate load percentage dynamically based on rated primary current
   let loadPercentage = Number(sensorData.loadPercentage);
   if (!loadPercentage || loadPercentage <= 0) {
-    loadPercentage = (primaryCurrent / RATED_CURRENT) * 100;
+    loadPercentage = t.ratedPrimaryCurrent > 0
+      ? (primaryCurrent / t.ratedPrimaryCurrent) * 100
+      : 0;
   }
 
-  const voltageResult = classifyVoltage(primaryVoltage);
+  // Use loss percentage for loss classification (more accurate than absolute watts)
+  const effectiveLossPercentage = lossPercentage > 0 ? lossPercentage : (loss > 0 ? (loss / Math.max(1, Number(sensorData.primaryPower) || 1)) * 100 : 0);
+
+  const voltageResult = classifyVoltage(primaryVoltage, secondaryVoltage, t);
   const loadResult = classifyLoad(loadPercentage);
-  const lossResult = classifyLoss(loss);
+  const lossResult = classifyLoss(effectiveLossPercentage);
   const efficiencyResult = classifyEfficiency(efficiency);
 
   const faults: string[] = [];
@@ -264,8 +304,8 @@ export function predict(sensorData: Record<string, unknown>): PredictResponse {
     primaryEnergy: Number(sensorData.primaryEnergy) || 0,
     primaryFrequency: Number(sensorData.primaryFrequency) || 50,
     primaryPowerFactor: Number(sensorData.primaryPowerFactor) || 1,
-    secondaryVoltage: Number(sensorData.secondaryVoltage) || 0,
-    secondaryCurrent: Number(sensorData.secondaryCurrent) || 0,
+    secondaryVoltage,
+    secondaryCurrent,
     secondaryPower: Number(sensorData.secondaryPower) || 0,
     secondaryEnergy: Number(sensorData.secondaryEnergy) || 0,
     secondaryFrequency: Number(sensorData.secondaryFrequency) || 50,
@@ -280,7 +320,7 @@ export function predict(sensorData: Record<string, unknown>): PredictResponse {
     load: loadResult,
     loss: lossResult,
     efficiency: efficiencyResult,
-  });
+  }, t);
 
   return {
     status,

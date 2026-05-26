@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { database } from '@/lib/firebase';
-import { useAppStore, type DataLogType } from '@/lib/store';
+import { useAppStore, type DataLogType, type TransformerConfig } from '@/lib/store';
 import { motion } from 'framer-motion';
 import { Separator } from '@/components/ui/separator';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, Building2 } from 'lucide-react';
+import ConfigModal from '@/components/config/ConfigModal';
 
 import StatusIndicator from '@/components/dashboard/StatusIndicator';
 import ParameterGrid, { type Parameter } from '@/components/dashboard/ParameterGrid';
@@ -16,6 +17,7 @@ import LossCard from '@/components/dashboard/LossCard';
 import LiveChart, { type ChartDataPoint } from '@/components/dashboard/LiveChart';
 import FaultWarningPanel from '@/components/dashboard/FaultWarningPanel';
 import LiveDataPreview, { type LiveDataRow } from '@/components/dashboard/LiveDataPreview';
+import TransformerProfileCard from '@/components/dashboard/TransformerProfileCard';
 
 // --- Fade-in animation wrapper ---
 const fadeIn = {
@@ -34,8 +36,34 @@ const zeroParams: Parameter[] = [
   { label: 'Power Factor', value: 0, unit: 'PF' },
 ];
 
+// Default state before config
+function NotConfiguredState({ onOpenConfig }: { onOpenConfig: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-6 py-20">
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
+        <Building2 className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+      </div>
+      <div className="text-center">
+        <h2 className="text-lg font-medium text-foreground mb-1">No Transformer Configured</h2>
+        <p className="text-sm text-muted-foreground max-w-md">
+          Please configure transformer specifications to start monitoring.
+        </p>
+      </div>
+      <button
+        onClick={onOpenConfig}
+        className="rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+      >
+        Configure Transformer
+      </button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const store = useAppStore();
+
+  // Transformer config
+  const config = store.transformerConfig;
 
   // Local state — start as OFFLINE until Firebase proves otherwise
   const [loading, setLoading] = useState(true);
@@ -45,7 +73,9 @@ export default function DashboardPage() {
   const [secondaryParams, setSecondaryParams] = useState<Parameter[]>(zeroParams);
   const [efficiency, setEfficiency] = useState(0);
   const [loss, setLoss] = useState(0);
+  const [lossPercentage, setLossPercentage] = useState(0);
   const [lossStatus, setLossStatus] = useState('Normal');
+  const [loadPercentage, setLoadPercentage] = useState(0);
   const [faults, setFaults] = useState<string[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [status, setStatus] = useState('Offline');
@@ -59,15 +89,22 @@ export default function DashboardPage() {
   // Live data table (max 10 rows)
   const [liveData, setLiveData] = useState<LiveDataRow[]>([]);
 
+  // Config modal state
+  const [showConfigModal, setShowConfigModal] = useState(!config);
+
   // Refs
   const sensorDataRef = useRef<any>(null);
   const prevFaultsRef = useRef<string[]>([]);
-  // Track Firebase data staleness: if data hasn't changed in 60s, ESP32 is offline
   const prevPrimaryDataRef = useRef<string>('');
   const prevSecondaryDataRef = useRef<string>('');
   const lastDataChangeTimeRef = useRef<number>(0);
-  // Ref for offline state — avoids stale closure issues in async callbacks
   const isOfflineRef = useRef<boolean>(true);
+  const configRef = useRef<TransformerConfig | null>(config);
+
+  // Keep configRef in sync
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   // --- Force offline: set all state to offline mode ---
   const forceOffline = useCallback(() => {
@@ -79,10 +116,11 @@ export default function DashboardPage() {
     setWarnings([]);
     setEfficiency(0);
     setLoss(0);
+    setLossPercentage(0);
     setLossStatus('Normal');
+    setLoadPercentage(0);
     setPrimaryParams(zeroParams);
     setSecondaryParams(zeroParams);
-    // Clear live data preview and charts when going offline
     setLiveData([]);
     setVoltageChartData([]);
     setCurrentChartData([]);
@@ -102,7 +140,7 @@ export default function DashboardPage() {
   // --- Staleness check: every second, if no data change in 60s → offline ---
   useEffect(() => {
     const interval = setInterval(() => {
-      if (lastDataChangeTimeRef.current === 0) return; // haven't received any data yet
+      if (lastDataChangeTimeRef.current === 0) return;
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
       if (elapsed > 60000) {
         forceOffline();
@@ -113,18 +151,19 @@ export default function DashboardPage() {
 
   // --- Firebase Realtime Database listeners ---
   useEffect(() => {
+    if (!config) return; // Don't listen until transformer is configured
+
     let firebaseFired = false;
 
     const primaryRef = ref(database, 'primary');
-    const secondaryRef = ref(database, 'seconday'); // Note: matches ESP32 Firebase path
+    const secondaryRef = ref(database, 'secondary'); // CORRECTED: was 'seconday'
 
     const unsubPrimary = onValue(
       primaryRef,
       (snapshot) => {
         const data = snapshot.val();
-        if (!data) return; // Firebase has no data
+        if (!data) return;
 
-        // Check if data actually changed (skip stale duplicate reads)
         const dataStr = JSON.stringify(data);
         if (dataStr === prevPrimaryDataRef.current) return;
         prevPrimaryDataRef.current = dataStr;
@@ -211,18 +250,21 @@ export default function DashboardPage() {
       unsubSecondary();
       clearTimeout(timeout);
     };
-  }, [forceOffline]);
+  }, [config, forceOffline]);
 
   // --- Prediction pipeline (every 2 seconds) ---
   const runPredictionPipeline = useCallback(async () => {
-    // GATE: If system is offline, do NOTHING — no charts, no live data, no DB logging
-    // Only the Firebase listener can bring the system back online
+    const currentConfig = configRef.current;
+
+    // GATE 1: No transformer configured
+    if (!currentConfig) return;
+
+    // GATE 2: If system is offline, do NOTHING
     if (isOfflineRef.current) {
-      console.log('[Pipeline] Blocked — system is offline, skipping all processing');
       return;
     }
 
-    // If stale (no data change in 60s), go offline and skip
+    // GATE 3: Staleness check
     if (lastDataChangeTimeRef.current > 0) {
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
       if (elapsed > 60000) {
@@ -234,14 +276,12 @@ export default function DashboardPage() {
     const sd = sensorDataRef.current;
     if (!sd) return;
 
-    // Check if all critical parameters are 0 → offline
+    // GATE 4: Check if all critical parameters are 0 → offline
     const allZero =
       (sd.primaryVoltage ?? 0) === 0 &&
       (sd.primaryCurrent ?? 0) === 0 &&
-      (sd.primaryPower ?? 0) === 0 &&
       (sd.secondaryVoltage ?? 0) === 0 &&
-      (sd.secondaryCurrent ?? 0) === 0 &&
-      (sd.secondaryPower ?? 0) === 0;
+      (sd.secondaryCurrent ?? 0) === 0;
 
     if (allZero) {
       forceOffline();
@@ -252,33 +292,61 @@ export default function DashboardPage() {
     isOfflineRef.current = false;
     setIsOffline(false);
 
-    const inputPower = sd.primaryPower ?? 0;
-    const outputPower = sd.secondaryPower ?? 0;
-    const calculatedLoss = inputPower - outputPower;
-    const calculatedEfficiency = inputPower > 0 ? (outputPower / inputPower) * 100 : 0;
+    // --- DYNAMIC CALCULATIONS based on transformer config ---
+    const pf = sd.primaryPowerFactor ?? 1;
+    const inputPower = sd.primaryVoltage * sd.primaryCurrent * pf; // Pin = Vp × Ip × PF
+    const outputPower = sd.secondaryVoltage * sd.secondaryCurrent * (sd.secondaryPowerFactor ?? 1); // Pout = Vs × Is × PF
+    const calculatedLoss = inputPower - outputPower; // Loss = Pin − Pout
+    const calculatedEfficiency = inputPower > 0 ? (outputPower / inputPower) * 100 : 0; // Eff = (Pout/Pin)×100
+    const calculatedLossPercentage = inputPower > 0 ? (calculatedLoss / inputPower) * 100 : 0; // Loss% = ((Pin-Pout)/Pin)×100
+    const calculatedLoadPercentage = currentConfig.ratedPrimaryCurrent > 0
+      ? (sd.primaryCurrent / currentConfig.ratedPrimaryCurrent) * 100 // Load% = (Iactual / Irated)×100
+      : 0;
 
     setLoss(Math.max(0, calculatedLoss));
     setEfficiency(Math.min(100, Math.max(0, calculatedEfficiency)));
+    setLossPercentage(Math.max(0, calculatedLossPercentage));
+    setLoadPercentage(calculatedLoadPercentage);
 
-    if (calculatedLoss > 300) setLossStatus('Fault');
-    else if (calculatedLoss > 150) setLossStatus('Warning');
+    if (calculatedLossPercentage > 10) setLossStatus('Fault');
+    else if (calculatedLossPercentage > 5) setLossStatus('Warning');
     else setLossStatus('Normal');
 
     const payload = {
       primaryVoltage: sd.primaryVoltage ?? 0,
       primaryCurrent: sd.primaryCurrent ?? 0,
-      primaryPower: sd.primaryPower ?? 0,
+      primaryPower: inputPower,
       secondaryVoltage: sd.secondaryVoltage ?? 0,
       secondaryCurrent: sd.secondaryCurrent ?? 0,
-      secondaryPower: sd.secondaryPower ?? 0,
+      secondaryPower: outputPower,
       loss: calculatedLoss,
       efficiency: calculatedEfficiency,
+      lossPercentage: calculatedLossPercentage,
+      loadPercentage: calculatedLoadPercentage,
+      primaryEnergy: sd.primaryEnergy ?? 0,
+      primaryFrequency: sd.primaryFrequency ?? 0,
+      primaryPowerFactor: pf,
+      secondaryEnergy: sd.secondaryEnergy ?? 0,
+      secondaryFrequency: sd.secondaryFrequency ?? 0,
+      secondaryPowerFactor: sd.secondaryPowerFactor ?? 1,
+      // Pass transformer thresholds for dynamic fault detection
+      thresholds: {
+        kva: currentConfig.kva,
+        primaryVoltage: currentConfig.primaryVoltage,
+        secondaryVoltage: currentConfig.secondaryVoltage,
+        ratedPrimaryCurrent: currentConfig.ratedPrimaryCurrent,
+        ratedSecondaryCurrent: currentConfig.ratedSecondaryCurrent,
+        primaryVoltageLower: currentConfig.primaryVoltageLower,
+        primaryVoltageUpper: currentConfig.primaryVoltageUpper,
+        secondaryVoltageLower: currentConfig.secondaryVoltageLower,
+        secondaryVoltageUpper: currentConfig.secondaryVoltageUpper,
+      },
     };
 
     // --- Only update UI and log data when TRANSFORMER IS ONLINE ---
     const timeStr = new Date().toLocaleTimeString();
 
-    // Update live data preview table (last 10 rows) — only when online
+    // Update live data preview table (last 10 rows)
     setLiveData((prev) => {
       if (isOfflineRef.current) return prev;
       const newRow: LiveDataRow = {
@@ -294,7 +362,7 @@ export default function DashboardPage() {
       return [newRow, ...prev].slice(0, 10);
     });
 
-    // Update charts (last 30 points) — only when online
+    // Update charts (last 30 points)
     setVoltageChartData((prev) => {
       if (isOfflineRef.current) return prev;
       const point: ChartDataPoint = {
@@ -319,8 +387,8 @@ export default function DashboardPage() {
       if (isOfflineRef.current) return prev;
       const point: ChartDataPoint = {
         time: timeStr,
-        primary: sd.primaryPower ?? 0,
-        secondary: sd.secondaryPower ?? 0,
+        primary: inputPower,
+        secondary: outputPower,
       };
       return [...prev, point].slice(-30);
     });
@@ -329,16 +397,16 @@ export default function DashboardPage() {
     store.setSensorData({
       primaryVoltage: sd.primaryVoltage ?? 0,
       primaryCurrent: sd.primaryCurrent ?? 0,
-      primaryPower: sd.primaryPower ?? 0,
+      primaryPower: inputPower,
       primaryEnergy: sd.primaryEnergy ?? 0,
       primaryFrequency: sd.primaryFrequency ?? 0,
-      primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+      primaryPowerFactor: pf,
       secondaryVoltage: sd.secondaryVoltage ?? 0,
       secondaryCurrent: sd.secondaryCurrent ?? 0,
-      secondaryPower: sd.secondaryPower ?? 0,
+      secondaryPower: outputPower,
       secondaryEnergy: sd.secondaryEnergy ?? 0,
       secondaryFrequency: sd.secondaryFrequency ?? 0,
-      secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+      secondaryPowerFactor: sd.secondaryPowerFactor ?? 1,
       timestamp: new Date().toISOString(),
     });
 
@@ -357,9 +425,7 @@ export default function DashboardPage() {
     };
     store.addRecentLog(logEntry);
 
-    // --- ML Prediction (best effort) + DB logging with fault type ---
-    // Note: We only reach here if transformer is online (checks above returned early)
-    // DB logging ONLY happens when ML prediction succeeds — offline NEVER logs
+    // --- ML Prediction (best effort) + DB logging ---
     try {
       const response = await fetch('/api/predict', {
         method: 'POST',
@@ -407,7 +473,6 @@ export default function DashboardPage() {
           prevFaultsRef.current = predFaults;
 
           // CRITICAL: Re-check offline state INSIDE async callback
-          // Prevents race condition where system goes offline while ML was in-flight
           if (isOfflineRef.current) {
             console.log('[Pipeline] Skipping DB log — system went offline during ML prediction');
             return;
@@ -420,17 +485,19 @@ export default function DashboardPage() {
             body: JSON.stringify({
               primaryVoltage: sd.primaryVoltage ?? 0,
               primaryCurrent: sd.primaryCurrent ?? 0,
-              primaryPower: sd.primaryPower ?? 0,
+              primaryPower: inputPower,
               primaryEnergy: sd.primaryEnergy ?? 0,
               primaryFrequency: sd.primaryFrequency ?? 0,
-              primaryPowerFactor: sd.primaryPowerFactor ?? 0,
+              primaryPowerFactor: pf,
               secondaryVoltage: sd.secondaryVoltage ?? 0,
               secondaryCurrent: sd.secondaryCurrent ?? 0,
-              secondaryPower: sd.secondaryPower ?? 0,
+              secondaryPower: outputPower,
               secondaryEnergy: sd.secondaryEnergy ?? 0,
               secondaryFrequency: sd.secondaryFrequency ?? 0,
-              secondaryPowerFactor: sd.secondaryPowerFactor ?? 0,
+              secondaryPowerFactor: sd.secondaryPowerFactor ?? 1,
               loss: calculatedLoss,
+              lossPercentage: calculatedLossPercentage,
+              loadPercentage: calculatedLoadPercentage,
               efficiency: calculatedEfficiency,
               status: predStatus,
               severity: predSeverity,
@@ -440,19 +507,35 @@ export default function DashboardPage() {
           }).catch(() => {});
         }
       }
-      // ML failed or no result — do NOT log to DB. Re-check offline too.
       if (isOfflineRef.current) return;
     } catch (err) {
       console.error('Prediction pipeline error:', err);
-      // do NOT log to DB on error
     }
   }, [store, forceOffline, status, severity]);
 
   // --- Run prediction pipeline every 2 seconds ---
   useEffect(() => {
+    if (!config) return; // Don't run pipeline until configured
     const interval = setInterval(runPredictionPipeline, 2000);
     return () => clearInterval(interval);
-  }, [runPredictionPipeline]);
+  }, [runPredictionPipeline, config]);
+
+  // --- If no config, show NotConfigured state ---
+  if (!config) {
+    return (
+      <div className="flex flex-col gap-6">
+        <motion.div {...fadeIn}>
+          <h1 className="text-2xl font-medium text-foreground">Fault & Warning Analysis</h1>
+          <p className="text-sm text-muted-foreground font-medium mt-1">
+            Real-time transformer monitoring with AI-powered fault detection
+          </p>
+        </motion.div>
+        <Separator />
+        <NotConfiguredState onOpenConfig={() => setShowConfigModal(true)} />
+        <ConfigModal isOpen={showConfigModal} onClose={() => setShowConfigModal(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -488,7 +571,16 @@ export default function DashboardPage() {
         </motion.div>
       )}
 
-      {/* Row 1: Detected Faults & Warnings — TOP */}
+      {/* Row 0: Transformer Profile Card */}
+      <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.02 }}>
+        <TransformerProfileCard
+          config={config}
+          isOffline={isOffline}
+          onChangeTransformer={() => setShowConfigModal(true)}
+        />
+      </motion.div>
+
+      {/* Row 1: Detected Faults & Warnings */}
       <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.05 }}>
         <FaultWarningPanel faults={faults} warnings={warnings} loading={loading} />
       </motion.div>
@@ -517,14 +609,15 @@ export default function DashboardPage() {
         <ParameterGrid title="Secondary Side (Output)" parameters={secondaryParams} loading={loading} />
       </motion.div>
 
-      {/* Row 4: Efficiency & Loss */}
+      {/* Row 4: Efficiency, Loss, Load Percentage */}
       <motion.div
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-3"
         {...fadeIn}
         transition={{ ...fadeIn.transition, delay: 0.15 }}
       >
         <EfficiencyCard efficiency={efficiency} loading={loading} />
-        <LossCard loss={loss} status={lossStatus} loading={loading} />
+        <LossCard loss={loss} lossPercentage={lossPercentage} status={lossStatus} loading={loading} />
+        <LoadPercentageCard loadPercentage={loadPercentage} ratedCurrent={config.ratedPrimaryCurrent} loading={loading} />
       </motion.div>
 
       {/* Row 5: Live Charts */}
@@ -552,8 +645,8 @@ export default function DashboardPage() {
         <LiveChart
           title="Power Trend"
           data={powerChartData}
-          primaryLabel="Primary Power"
-          secondaryLabel="Secondary Power"
+          primaryLabel="Input Power"
+          secondaryLabel="Output Power"
           yUnit="W"
           loading={loading}
         />
@@ -563,6 +656,79 @@ export default function DashboardPage() {
       <motion.div {...fadeIn} transition={{ ...fadeIn.transition, delay: 0.25 }}>
         <LiveDataPreview data={liveData} loading={loading} />
       </motion.div>
+
+      {/* Config Modal (for reconfiguring) */}
+      <ConfigModal isOpen={showConfigModal} onClose={() => setShowConfigModal(false)} isReconfigure />
+    </div>
+  );
+}
+
+// --- Load Percentage Card (new) ---
+
+function LoadPercentageCard({
+  loadPercentage,
+  ratedCurrent,
+  loading,
+}: {
+  loadPercentage: number;
+  ratedCurrent: number;
+  loading?: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="rounded-xl border bg-card py-4 px-6">
+        <div className="text-xs text-muted-foreground font-medium mb-2">Load Percentage</div>
+        <div className="h-10 w-24 mb-2 bg-muted animate-pulse rounded" />
+      </div>
+    );
+  }
+
+  function loadColor(lp: number) {
+    if (lp <= 95) return 'text-green-600 dark:text-green-400';
+    if (lp <= 100) return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
+  }
+
+  function loadProgressColor(lp: number) {
+    if (lp <= 95) return '[&>div]:bg-green-500';
+    if (lp <= 100) return '[&>div]:bg-amber-500';
+    return '[&>div]:bg-red-500';
+  }
+
+  function loadLabel(lp: number) {
+    if (lp <= 95) return 'Normal';
+    if (lp <= 100) return 'Warning';
+    return 'Overload';
+  }
+
+  function loadBadgeColor(lp: number) {
+    if (lp <= 95) return 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300 border-green-200 dark:border-green-800';
+    if (lp <= 100) return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+    return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 border-red-200 dark:border-red-800';
+  }
+
+  return (
+    <div className="rounded-xl border bg-card py-4 px-6">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium">Load Percentage</span>
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${loadBadgeColor(loadPercentage)}`}>
+          {loadLabel(loadPercentage)}
+        </span>
+      </div>
+      <div className={`text-3xl font-medium mb-2 ${loadColor(loadPercentage)}`}>
+        {loadPercentage.toFixed(1)}%
+      </div>
+      <div className={`mb-3 ${loadProgressColor(loadPercentage)}`}>
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full bg-current transition-all duration-500"
+            style={{ width: `${Math.min(100, Math.max(0, loadPercentage))}%` }}
+          />
+        </div>
+      </div>
+      <div className="text-xs text-muted-foreground font-medium">
+        (Iactual / Irated) × 100 &nbsp;|&nbsp; Irated = {ratedCurrent.toFixed(2)}A
+      </div>
     </div>
   );
 }

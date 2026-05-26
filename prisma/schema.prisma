@@ -31,8 +31,10 @@ model DataLog {
   secondaryPowerFactor Float   @default(0)
   
   // Calculated values
-  loss       Float  @default(0)
-  efficiency Float  @default(0)
+  loss            Float  @default(0)
+  lossPercentage  Float  @default(0)
+  loadPercentage  Float  @default(0)
+  efficiency      Float  @default(0)
   
   // Status
   status     String  @default("OFFLINE")

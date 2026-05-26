@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
         secondaryFrequency: body.secondaryFrequency ?? 0,
         secondaryPowerFactor: body.secondaryPowerFactor ?? 0,
         loss: body.loss ?? 0,
+        lossPercentage: body.lossPercentage ?? 0,
+        loadPercentage: body.loadPercentage ?? 0,
         efficiency: body.efficiency ?? 0,
         status: body.status ?? 'OFFLINE',
         severity: body.severity ?? 'Normal',

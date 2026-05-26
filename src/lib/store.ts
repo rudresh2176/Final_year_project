@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 // --- Type Definitions ---
 
@@ -50,6 +51,22 @@ export interface PredictionResultType {
   severity: string;
 }
 
+export interface TransformerConfig {
+  kva: number;
+  primaryVoltage: number;
+  secondaryVoltage: number;
+  transformerName: string;
+  location: string;
+  // Calculated values
+  ratedPrimaryCurrent: number;
+  ratedSecondaryCurrent: number;
+  // Voltage limits
+  primaryVoltageLower: number;
+  primaryVoltageUpper: number;
+  secondaryVoltageLower: number;
+  secondaryVoltageUpper: number;
+}
+
 // --- Store Interface ---
 
 interface AppState {
@@ -71,49 +88,71 @@ interface AppState {
   setSensorData: (data: SensorDataType | null) => void;
   predictionResult: PredictionResultType | null;
   setPredictionResult: (result: PredictionResultType | null) => void;
+  // Transformer configuration
+  transformerConfig: TransformerConfig | null;
+  setTransformerConfig: (config: TransformerConfig | null) => void;
+  showConfigModal: boolean;
+  setShowConfigModal: (show: boolean) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  // Navigation
-  activePage: 'home',
-  setActivePage: (page) => set({ activePage: page }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Navigation
+      activePage: 'home',
+      setActivePage: (page) => set({ activePage: page }),
 
-  // Sidebar
-  sidebarExpanded: true,
-  setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
+      // Sidebar
+      sidebarExpanded: true,
+      setSidebarExpanded: (expanded) => set({ sidebarExpanded: expanded }),
 
-  // Mobile menu
-  mobileMenuOpen: false,
-  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
+      // Mobile menu
+      mobileMenuOpen: false,
+      setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
 
-  // Notifications
-  notifications: [],
-  addNotification: (notification) =>
-    set((state) => ({
-      notifications: [notification, ...state.notifications],
-    })),
-  markAllRead: () =>
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
-    })),
-  clearAllNotifications: () => set({ notifications: [] }),
+      // Notifications
+      notifications: [],
+      addNotification: (notification) =>
+        set((state) => ({
+          notifications: [notification, ...state.notifications],
+        })),
+      markAllRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
+        })),
+      clearAllNotifications: () => set({ notifications: [] }),
 
-  // Recent logs
-  recentLogs: [],
-  addRecentLog: (log) =>
-    set((state) => ({
-      recentLogs: [log, ...state.recentLogs].slice(0, 10),
-    })),
+      // Recent logs
+      recentLogs: [],
+      addRecentLog: (log) =>
+        set((state) => ({
+          recentLogs: [log, ...state.recentLogs].slice(0, 10),
+        })),
 
-  // Connection status
-  connectionStatus: 'offline',
-  setConnectionStatus: (status) => set({ connectionStatus: status }),
+      // Connection status
+      connectionStatus: 'offline',
+      setConnectionStatus: (status) => set({ connectionStatus: status }),
 
-  // Sensor data
-  sensorData: null,
-  setSensorData: (data) => set({ sensorData: data }),
+      // Sensor data
+      sensorData: null,
+      setSensorData: (data) => set({ sensorData: data }),
 
-  // Prediction result
-  predictionResult: null,
-  setPredictionResult: (result) => set({ predictionResult: result }),
-}));
+      // Prediction result
+      predictionResult: null,
+      setPredictionResult: (result) => set({ predictionResult: result }),
+
+      // Transformer configuration
+      transformerConfig: null,
+      setTransformerConfig: (config) => set({ transformerConfig: config }),
+      showConfigModal: false,
+      setShowConfigModal: (show) => set({ showConfigModal: show }),
+    }),
+    {
+      name: 'transmonitor-store',
+      // Only persist these keys to localStorage
+      partialize: (state) => ({
+        transformerConfig: state.transformerConfig,
+      }),
+    }
+  )
+);

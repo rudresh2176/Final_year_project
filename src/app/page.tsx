@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useAppStore } from '@/lib/store';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import HomePage from '@/components/pages/HomePage';
 import AboutPage from '@/components/pages/AboutPage';

@@ -3,9 +3,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 
 interface LossCardProps {
   loss: number;
+  lossPercentage?: number;
   status: string;
   loading?: boolean;
 }
@@ -24,7 +26,14 @@ function lossBadge(status: string) {
   return 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300 border-green-200 dark:border-green-800';
 }
 
-export default function LossCard({ loss, status, loading }: LossCardProps) {
+function progressColor(status: string) {
+  const s = status.toLowerCase();
+  if (s === 'fault') return '[&>div]:bg-red-500';
+  if (s === 'warning') return '[&>div]:bg-amber-500';
+  return '[&>div]:bg-green-500';
+}
+
+export default function LossCard({ loss, lossPercentage, status, loading }: LossCardProps) {
   if (loading) {
     return (
       <Card className="py-4">
@@ -41,6 +50,7 @@ export default function LossCard({ loss, status, loading }: LossCardProps) {
   }
 
   const label = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+  const lp = lossPercentage ?? 0;
 
   return (
     <Card className="py-4">
@@ -54,8 +64,18 @@ export default function LossCard({ loss, status, loading }: LossCardProps) {
         <div className={`text-3xl font-medium mb-2 ${lossStatusColor(status)}`}>
           {loss.toFixed(2)} W
         </div>
+        {lp > 0 && (
+          <div className={`mb-2 ${progressColor(status)}`}>
+            <Progress value={Math.min(100, lp * 5)} />
+          </div>
+        )}
         <div className="text-xs text-muted-foreground font-medium">
           Input Power − Output Power
+          {lp > 0 && (
+            <span className="ml-1">
+              ({lp.toFixed(1)}% loss)
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>
