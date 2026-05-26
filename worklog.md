@@ -416,3 +416,25 @@ Stage Summary:
 - **New formulas**: V×I×PF for power, percentage-based loss/load classification
 - **New UI**: Config modal, transformer profile card, load percentage card, "Change Transformer" button
 - **Zero lint errors, successful compilation**
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Fix secondary data not showing on dashboard + Prisma client regeneration
+
+Work Log:
+- Analyzed screenshot showing Firebase `secondary` node with valid data (voltage: 115.5, current: 3.096, power: 347.5, powerFactor: 0.97)
+- Found **two root causes**:
+  1. **Prisma client stale**: After adding `lossPercentage`/`loadPercentage` columns, `npx prisma generate` ran but the dev server cached the old Prisma client via `globalThis` → DB logging failed with `Unknown argument 'lossPercentage'`
+  2. **forceOffline resetting params**: When staleness check (60s no data change) triggered `forceOffline()`, it reset `primaryParams` and `secondaryParams` to zero. Then Firebase `onValue` re-fired with the SAME data, but `prevSecondaryDataRef` check matched → data SKIPPED → zeros persisted forever
+- **Fix 1**: Killed all processes, regenerated Prisma client (`npx prisma generate`), restarted dev server fresh
+- **Fix 2**: Modified `forceOffline()` to NOT reset `primaryParams`/`secondaryParams` — these show last known sensor readings from Firebase and should persist
+- **Fix 3**: Modified `forceOffline()` to CLEAR `prevPrimaryDataRef` and `prevSecondaryDataRef` — so when Firebase fires with existing data, it's treated as new and the params get restored
+- **Fix 4**: Added `if (isOfflineRef.current) return;` guard in staleness check — prevents re-triggering forceOffline every second when already offline
+- Verified: dev server compiles successfully, no Prisma errors
+
+Stage Summary:
+- **Secondary data now persists**: ParameterGrid keeps showing last known Firebase values even when system goes offline temporarily
+- **Prisma DB logging fixed**: `lossPercentage` and `loadPercentage` columns now write successfully
+- **No more zero flash**: forceOffline no longer resets sensor display to zeros
+- **Staleness check stable**: Won't re-trigger when already offline

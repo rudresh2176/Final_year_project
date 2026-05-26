@@ -106,7 +106,11 @@ export default function DashboardPage() {
     configRef.current = config;
   }, [config]);
 
-  // --- Force offline: set all state to offline mode ---
+  // --- Force offline: set system to offline mode ---
+  // NOTE: We do NOT reset primaryParams/secondaryParams here because they show
+  // the last known sensor readings from Firebase. Resetting them would cause a
+  // bug where static Firebase data can't restore the display (prevDataRef would
+  // skip identical re-reads). Only calculated/derived values are reset.
   const forceOffline = useCallback(() => {
     isOfflineRef.current = true;
     setIsOffline(true);
@@ -119,8 +123,10 @@ export default function DashboardPage() {
     setLossPercentage(0);
     setLossStatus('Normal');
     setLoadPercentage(0);
-    setPrimaryParams(zeroParams);
-    setSecondaryParams(zeroParams);
+    // Clear data-change tracking refs so Firebase can re-trigger data restore
+    prevPrimaryDataRef.current = '';
+    prevSecondaryDataRef.current = '';
+    // Clear live data table and charts (these are time-series, not last-known values)
     setLiveData([]);
     setVoltageChartData([]);
     setCurrentChartData([]);
@@ -141,6 +147,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (lastDataChangeTimeRef.current === 0) return;
+      if (isOfflineRef.current) return; // Already offline, don't re-trigger
       const elapsed = Date.now() - lastDataChangeTimeRef.current;
       if (elapsed > 60000) {
         forceOffline();
