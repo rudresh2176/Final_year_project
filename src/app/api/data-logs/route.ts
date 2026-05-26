@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
 
     const dataLog = await db.dataLog.create({
       data: {
+        transformerId: body.transformerId ?? 'UNKNOWN',
         primaryVoltage: body.primaryVoltage ?? 0,
         primaryCurrent: body.primaryCurrent ?? 0,
         primaryPower: body.primaryPower ?? 0,
@@ -52,8 +53,26 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const limit = searchParams.get('limit');
     const offset = searchParams.get('offset');
+    const transformerId = searchParams.get('transformerId');
+    const status = searchParams.get('status');
+    const search = searchParams.get('search');
 
     const where: Record<string, unknown> = {};
+
+    if (transformerId) {
+      where.transformerId = transformerId;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (search) {
+      where.OR = [
+        { transformerId: { contains: search } },
+        { faultType: { contains: search } },
+      ];
+    }
 
     if (startDate || endDate) {
       where.timestamp = {};

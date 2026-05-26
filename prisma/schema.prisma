@@ -9,10 +9,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Transformer configuration and identity
+model Transformer {
+  id              String   @id @default(cuid())
+  transformerId   String   @unique // TX001, TX002, etc.
+  name            String   @default("Untitled Transformer")
+  kva             Float
+  primaryVoltage  Float
+  secondaryVoltage Float
+  location        String   @default("N/A")
+  phase           String   @default("single")
+  status          String   @default("Online")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  logs            DataLog[]
+}
+
 // Data log entry from transformer monitoring
 model DataLog {
-  id                String   @id @default(cuid())
-  timestamp         DateTime @default(now())
+  id                String      @id @default(cuid())
+  transformerId     String      @default("UNKNOWN")
+  transformer       Transformer @relation(fields: [transformerId], references: [transformerId])
+  timestamp         DateTime    @default(now())
   
   // Primary side (input) parameters
   primaryVoltage    Float    @default(0)
