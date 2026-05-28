@@ -543,6 +543,10 @@ export default function DashboardPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              transformerId: currentConfig.transformerName ? `TX${String(currentConfig.transformerName).padStart(3, '0')}` : 'TX001',
+              transformerName: currentConfig.transformerName || 'Unknown',
+              location: currentConfig.location || 'N/A',
+              kva: currentConfig.kva || 0,
               primaryVoltage: sd.primaryVoltage ?? 0,
               primaryCurrent: sd.primaryCurrent ?? 0,
               primaryPower: inputPower,

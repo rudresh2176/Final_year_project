@@ -5,13 +5,13 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 // Transformer configuration and identity
 model Transformer {
-  id              String   @id @default(cuid())
+  id              String   @id @default(cuid()) @map("_id")
   transformerId   String   @unique // TX001, TX002, etc.
   name            String   @default("Untitled Transformer")
   kva             Float
@@ -28,9 +28,15 @@ model Transformer {
 
 // Data log entry from transformer monitoring
 model DataLog {
-  id                String      @id @default(cuid())
+  id                String      @id @default(cuid()) @map("_id")
   transformerId     String      @default("UNKNOWN")
-  transformer       Transformer @relation(fields: [transformerId], references: [transformerId])
+  transformer       Transformer @relation(fields: [transformerId], references: [transformerId], onDelete: Cascade)
+  
+  // Denormalized transformer info for easy searching/filtering
+  transformerName   String      @default("Unknown")
+  location          String      @default("N/A")
+  kva               Float       @default(0)
+  
   timestamp         DateTime    @default(now())
   
   // Primary side (input) parameters
@@ -66,7 +72,7 @@ model DataLog {
 
 // Notification entry
 model Notification {
-  id          String   @id @default(cuid())
+  id          String   @id @default(cuid()) @map("_id")
   type        String   @default("info")
   title       String
   message     String

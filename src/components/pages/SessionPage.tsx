@@ -63,6 +63,9 @@ interface TransformerInfo {
 interface DataRecord {
   id: string;
   transformerId: string;
+  transformerName: string;
+  location: string;
+  kva: number;
   timestamp: string;
   createdAt: string;
   status: string;
@@ -210,7 +213,8 @@ const statusFilterOptions = [
 // --- Main Page ---
 
 export default function SessionPage() {
-  const today = new Date();
+  // Memoize today to prevent infinite re-renders
+  const today = useMemo(() => new Date(), []);
 
   // State
   const [transformers, setTransformers] = useState<TransformerInfo[]>([]);
@@ -232,7 +236,11 @@ export default function SessionPage() {
       const res = await fetch('/api/transformers');
       const json = await res.json();
       if (json.success && json.transformers) {
-        setTransformers(json.transformers);
+        // Ensure we store transformers as unique by transformerId
+        const unique = Array.from(
+          new Map(json.transformers.map((t: any) => [t.transformerId, t])).values()
+        );
+        setTransformers(unique);
       }
     } catch (err) {
       console.error('Failed to fetch transformers:', err);
@@ -278,6 +286,33 @@ export default function SessionPage() {
       const json = await res.json();
       if (json.success && json.data) {
         setData(json.data);
+
+        // Merge transformers discovered from data logs into dropdown list so
+        // new transformer names appearing in logs show up immediately.
+        try {
+          const fromLogs = (json.data as DataRecord[]).map((d) => ({
+            transformerId: d.transformerId ?? `TX${d.transformerName ?? 'Unknown'}`,
+            name: d.transformerName ?? 'Unknown',
+            kva: d.kva ?? 0,
+            primaryVoltage: 0,
+            secondaryVoltage: 0,
+            location: d.location ?? 'N/A',
+            phase: 'single',
+            status: d.status ?? 'Unknown',
+            createdAt: d.createdAt ?? new Date().toISOString(),
+          }));
+
+          // Merge with existing transformers state
+          setTransformers((prev) => {
+            const map = new Map(prev.map((t) => [t.transformerId, t]));
+            for (const t of fromLogs) {
+              if (!map.has(t.transformerId)) map.set(t.transformerId, t as any);
+            }
+            return Array.from(map.values()).sort((a: any, b: any) => (a.transformerId > b.transformerId ? 1 : -1));
+          });
+        } catch (mergeErr) {
+          console.warn('Failed to merge transformers from logs:', mergeErr);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -588,7 +623,7 @@ export default function SessionPage() {
                 <div className="flex items-center gap-1.5">
                   <Input
                     type="text"
-                    placeholder="Transformer ID, Fault type..."
+                    placeholder="Transformer Name, ID, Fault type, Location..."
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -730,7 +765,7 @@ export default function SessionPage() {
                     paginatedData.map((row, idx) => {
                       // Find transformer KVA for tag
                       const tx = transformers.find((t) => t.transformerId === row.transformerId);
-                      const txKVA = tx ? `${tx.kva}KVA` : '';
+                      const txKVA = tx ? `${tx.kva}KVA` : row.kva ? `${row.kva}KVA` : '';
 
                       return (
                         <TableRow
@@ -744,12 +779,19 @@ export default function SessionPage() {
                             {formatTimestamp(row.createdAt)}
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px] font-medium border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
-                            >
-                              {row.transformerId} ({txKVA})
-                            </Badge>
+                            <div className="flex flex-col gap-1">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-medium border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 w-fit"
+                              >
+                                {row.transformerId}
+                              </Badge>
+                              <div className="text-[9px] text-muted-foreground">
+                                {row.transformerName && <span>{row.transformerName}</span>}
+                                {row.transformerName && txKVA && <span> • </span>}
+                                {txKVA && <span>{txKVA}</span>}
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell className="text-center">
                             <Badge

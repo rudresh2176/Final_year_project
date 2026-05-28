@@ -98,22 +98,23 @@ export default function AboutPage() {
           </CardHeader>
           <CardContent className="text-sm leading-relaxed text-muted-foreground">
             <p>
-              This project presents an AI-based system for monitoring dry-type transformers in real-time. By leveraging IoT sensors (PZEM-004T V3.0) connected to an ESP32 microcontroller, the system continuously captures electrical parameters — including voltage, current, power, energy, frequency, and power factor — from both primary and secondary windings of a <span className="font-medium text-foreground">2 KVA, 230V/120V single-phase transformer</span>.
+              This project presents an enterprise-grade AI-based system for real-time monitoring and intelligent fault classification of single-phase transformers. Unlike conventional fixed-rating monitoring systems, the platform is designed to dynamically support transformers of different KVA ratings through configurable transformer specifications. Using  sensors integrated with  microcontrollers, the system continuously monitors important electrical parameters including voltage, current, power, energy, frequency, and power factor from both primary and secondary sides of the transformer.
             </p>
-            <p className="mt-3">
-              The collected data is transmitted wirelessly to Firebase Realtime Database, enabling remote access and real-time visualization through a responsive web dashboard. The system integrates a machine learning model trained on transformer fault signatures to automatically classify conditions and detect anomalies, enabling proactive maintenance and reducing unplanned downtime.
+
+            <p className="mt-4">
+              The platform further provides advanced features such as real-time fault and warning analysis, multi-transformer history management, enterprise analytics dashboards, CSV/Excel export, notification management, and automatic calculation of transformer limits, load percentage, efficiency, and losses using real-time electrical formulas, making it suitable for academic demonstrations, industrial monitoring simulations, and predictive maintenance applications.
             </p>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              {[
-                { label: 'Transformer', value: '2 KVA' },
-                { label: 'Primary', value: '230V' },
-                { label: 'Secondary', value: '120V' },
-              ].map((s) => (
-                <div key={s.label} className="rounded-lg border bg-card p-3 text-center">
-                  <span className="block text-sm font-medium">{s.value}</span>
-                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
-                </div>
-              ))}
+
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-card p-4 text-center">
+                <span className="block text-sm font-medium text-foreground">Dynamic KVA Support</span>
+              </div>
+              <div className="rounded-lg border bg-card p-4 text-center">
+                <span className="block text-sm font-medium text-foreground">Real-Time Monitoring</span>
+              </div>
+              <div className="rounded-lg border bg-card p-4 text-center">
+                <span className="block text-sm font-medium text-foreground">AI Fault Detection</span>
+              </div>
             </div>
           </CardContent>
         </Card>
