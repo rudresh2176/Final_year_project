@@ -65,11 +65,9 @@ const VOLTAGE = {
   WARNING_HIGH: 253,
 } as const;
 
-// Loss thresholds (Watts)
-const LOSS = {
-  NORMAL: 150,
-  WARNING: 300,
-} as const;
+// Loss thresholds removed from classification: loss will not generate
+// faults or warnings in the service, but raw loss values are still
+// returned for display and analytics.
 
 // Efficiency thresholds (%)
 const EFFICIENCY = {
@@ -184,40 +182,7 @@ function classifyLoad(loadPercentage: number): {
 /**
  * Classify transformer loss.
  */
-function classifyLoss(loss: number): {
-  status: string;
-  isFault: boolean;
-  isWarning: boolean;
-  faultName: string;
-  warningName: string;
-} {
-  if (loss <= LOSS.NORMAL) {
-    return {
-      status: "Normal",
-      isFault: false,
-      isWarning: false,
-      faultName: "",
-      warningName: "",
-    };
-  }
-  if (loss > LOSS.NORMAL && loss <= LOSS.WARNING) {
-    return {
-      status: "High Loss Warning",
-      isFault: false,
-      isWarning: true,
-      faultName: "",
-      warningName: "High Loss Warning",
-    };
-  }
-  // > 300W
-  return {
-    status: "High Loss Fault",
-    isFault: true,
-    isWarning: false,
-    faultName: "High Loss",
-    warningName: "",
-  };
-}
+// Loss classification removed.
 
 /**
  * Classify efficiency.
@@ -270,7 +235,6 @@ function simulateAIPrediction(
   classifications: {
     voltage: ReturnType<typeof classifyVoltage>;
     load: ReturnType<typeof classifyLoad>;
-    loss: ReturnType<typeof classifyLoss>;
     efficiency: ReturnType<typeof classifyEfficiency>;
   }
 ): { prediction: string; confidence: number } {
@@ -302,10 +266,7 @@ function simulateAIPrediction(
     anomalies.push("Load approaching threshold");
   }
 
-  // Loss proximity
-  if (Math.abs(data.loss - LOSS.NORMAL) < 15) {
-    anomalies.push("Loss trending upward");
-  }
+  // Loss proximity removed from AI anomalies
 
   // Efficiency proximity
   if (Math.abs(data.efficiency - EFFICIENCY.NORMAL) < 3) {
@@ -380,7 +341,6 @@ function predict(sensorData: Record<string, unknown>): PredictResponse {
   // Classify each parameter
   const voltageResult = classifyVoltage(primaryVoltage);
   const loadResult = classifyLoad(loadPercentage);
-  const lossResult = classifyLoss(loss);
   const efficiencyResult = classifyEfficiency(efficiency);
 
   // Gather faults and warnings
@@ -391,8 +351,6 @@ function predict(sensorData: Record<string, unknown>): PredictResponse {
   if (voltageResult.isWarning) warnings.push(voltageResult.warningName);
   if (loadResult.isFault) faults.push(loadResult.faultName);
   if (loadResult.isWarning) warnings.push(loadResult.warningName);
-  if (lossResult.isFault) faults.push(lossResult.faultName);
-  if (lossResult.isWarning) warnings.push(lossResult.warningName);
   if (efficiencyResult.isFault) faults.push(efficiencyResult.faultName);
   if (efficiencyResult.isWarning) warnings.push(efficiencyResult.warningName);
 
@@ -440,7 +398,6 @@ function predict(sensorData: Record<string, unknown>): PredictResponse {
   const ai = simulateAIPrediction(sensorDataForAI, faults, warnings, {
     voltage: voltageResult,
     load: loadResult,
-    loss: lossResult,
     efficiency: efficiencyResult,
   });
 
@@ -454,7 +411,7 @@ function predict(sensorData: Record<string, unknown>): PredictResponse {
     details: {
       voltageStatus: voltageResult.status,
       loadStatus: loadResult.status,
-      lossStatus: lossResult.status,
+      // lossStatus removed
       efficiencyStatus: efficiencyResult.status,
     },
   };

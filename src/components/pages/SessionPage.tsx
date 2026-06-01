@@ -162,12 +162,21 @@ function exportToCSV(data: DataRecord[], filename: string) {
     return str;
   };
 
+  const sanitizeFaultType = (ft: string | null) => {
+    if (!ft) return '-';
+    const parts = ft
+      .split(',')
+      .map((s) => s.trim())
+      .filter((p) => !/High Loss|High Transformer Loss/i.test(p));
+    return parts.length > 0 ? parts.join(', ') : '-';
+  };
+
   const rows = data.map((row) => [
     escapeCSV(formatTimestamp(row.createdAt)),
     escapeCSV(row.transformerId),
     escapeCSV(row.status),
     escapeCSV(row.severity),
-    escapeCSV(row.faultType),
+    escapeCSV(sanitizeFaultType(row.faultType)),
     escapeCSV(row.warnings ? (() => { try { return JSON.parse(row.warnings).join('; '); } catch { return row.warnings; } })() : '-'),
     escapeCSV(row.primaryVoltage.toFixed(2)),
     escapeCSV(row.primaryCurrent.toFixed(2)),
@@ -810,12 +819,12 @@ export default function SessionPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {row.faultType ? (
+                            {row.faultType && sanitizeFaultType(row.faultType) !== '-' ? (
                               <Badge
                                 variant="secondary"
                                 className="text-[10px] font-medium px-1.5 py-0 bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
                               >
-                                {row.faultType}
+                                {sanitizeFaultType(row.faultType)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>

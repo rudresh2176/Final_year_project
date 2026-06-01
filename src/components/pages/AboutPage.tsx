@@ -66,7 +66,6 @@ const faultTypes = [
   { name: 'Over Voltage', condition: '> 253V', severity: 'High', color: 'border-red-300 dark:border-red-800' },
   { name: 'Under Voltage', condition: '< 207V', severity: 'High', color: 'border-red-300 dark:border-red-800' },
   { name: 'Over Load', condition: '> 100% rated', severity: 'High', color: 'border-red-300 dark:border-red-800' },
-  { name: 'High Transformer Loss', condition: '> 300W', severity: 'Medium', color: 'border-amber-300 dark:border-amber-800' },
   { name: 'Low Efficiency', condition: '< 80%', severity: 'Medium', color: 'border-amber-300 dark:border-amber-800' },
 ];
 

@@ -4,11 +4,10 @@
  * Embedded rule-based Random Forest Classifier for transformer fault detection.
  * Fully dynamic — thresholds are calculated from transformer configuration.
  *
- * Supports 5 fault types:
+ * Supports 4 fault types:
  *   - Over Voltage
  *   - Under Voltage
  *   - Over Load
- *   - High Loss
  *   - Low Efficiency
  */
 
@@ -48,7 +47,6 @@ export interface TransformerThresholds {
 interface ClassificationResult {
   voltageStatus: string;
   loadStatus: string;
-  lossStatus: string;
   efficiencyStatus: string;
 }
 
@@ -138,16 +136,9 @@ function classifyLoad(loadPercentage: number) {
   return { status: "Over Load Fault", isFault: true, isWarning: false, faultName: "Over Load", warningName: "" };
 }
 
-function classifyLoss(lossPercentage: number) {
-  // lossPercentage = ((Pin - Pout) / Pin) * 100
-  if (lossPercentage < 5) {
-    return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
-  }
-  if (lossPercentage >= 5 && lossPercentage <= 10) {
-    return { status: "High Loss Warning", isFault: false, isWarning: true, faultName: "", warningName: "High Loss Warning" };
-  }
-  return { status: "High Loss Fault", isFault: true, isWarning: false, faultName: "High Loss", warningName: "" };
-}
+// Loss classification removed: transformer loss will no longer generate
+// faults or warnings. Loss is still measured and returned, but not used
+// to determine Fault/Warning status.
 
 function classifyEfficiency(efficiency: number) {
   if (efficiency >= 90) {
@@ -168,7 +159,6 @@ function simulateAIPrediction(
   classifications: {
     voltage: ReturnType<typeof classifyVoltage>;
     load: ReturnType<typeof classifyLoad>;
-    loss: ReturnType<typeof classifyLoss>;
     efficiency: ReturnType<typeof classifyEfficiency>;
   },
   t: TransformerThresholds
@@ -186,11 +176,6 @@ function simulateAIPrediction(
   // Load proximity
   if (Math.abs(data.loadPercentage - 95) < 5 || Math.abs(data.loadPercentage - 100) < 3) {
     anomalies.push("Load approaching threshold");
-  }
-
-  // Loss proximity
-  if (data.loss >= 4) {
-    anomalies.push("Loss trending upward");
   }
 
   // Efficiency proximity
@@ -271,7 +256,6 @@ export function predict(
 
   const voltageResult = classifyVoltage(primaryVoltage, secondaryVoltage, t);
   const loadResult = classifyLoad(loadPercentage);
-  const lossResult = classifyLoss(effectiveLossPercentage);
   const efficiencyResult = classifyEfficiency(efficiency);
 
   const faults: string[] = [];
@@ -281,8 +265,6 @@ export function predict(
   if (voltageResult.isWarning) warnings.push(voltageResult.warningName);
   if (loadResult.isFault) faults.push(loadResult.faultName);
   if (loadResult.isWarning) warnings.push(loadResult.warningName);
-  if (lossResult.isFault) faults.push(lossResult.faultName);
-  if (lossResult.isWarning) warnings.push(lossResult.warningName);
   if (efficiencyResult.isFault) faults.push(efficiencyResult.faultName);
   if (efficiencyResult.isWarning) warnings.push(efficiencyResult.warningName);
 
@@ -318,7 +300,6 @@ export function predict(
   const ai = simulateAIPrediction(sensorDataForAI, faults, warnings, {
     voltage: voltageResult,
     load: loadResult,
-    loss: lossResult,
     efficiency: efficiencyResult,
   }, t);
 
@@ -332,7 +313,6 @@ export function predict(
     details: {
       voltageStatus: voltageResult.status,
       loadStatus: loadResult.status,
-      lossStatus: lossResult.status,
       efficiencyStatus: efficiencyResult.status,
     },
   };
