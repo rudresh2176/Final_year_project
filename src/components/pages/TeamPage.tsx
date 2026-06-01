@@ -35,7 +35,7 @@ const teamMembers = [
     usn: '1MS22EE037',
     initials: 'PK',
     role: 'ML & Analytics',
-    description: 'Machine learning model training and fault classification algorithms',
+    description: 'Machine learning model training and abnormal conditions classification algorithms',
   },
   {
     name: 'RUDRESH B S',

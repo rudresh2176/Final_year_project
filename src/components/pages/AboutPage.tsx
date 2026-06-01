@@ -153,7 +153,7 @@ export default function AboutPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Data flows from physical sensors through the IoT pipeline to the cloud, where it is visualized and analyzed by the AI model for fault classification.
+                Data flows from physical sensors through the IoT pipeline to the cloud, where it is visualized and analyzed by the AI model for abnormal conditions classification.
               </p>
             </div>
           </CardContent>
@@ -190,7 +190,7 @@ export default function AboutPage() {
         </Card>
       </motion.div>
 
-      {/* Fault Classification */}
+      {/* Abnormal Conditions Classification */}
       <motion.div custom={3} variants={fadeVariant} initial="hidden" animate="visible">
         <Card className="rounded-xl border shadow-sm">
           <CardHeader className="pb-3">
@@ -198,7 +198,7 @@ export default function AboutPage() {
               <div className="flex h-7 w-7 items-center justify-center rounded-lg border bg-card">
                 <AlertTriangle className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
               </div>
-              AI Fault Classification
+              AI Abnormal Conditions Classification
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
@@ -262,7 +262,7 @@ export default function AboutPage() {
             </p>
             <Separator className="my-3" />
             <p>
-              Automated fault classification reduces reliance on expert judgment, enables faster response times, and supports the transition from time-based to condition-based maintenance strategies. These models continuously improve through experience, adapting to new data patterns and environmental conditions.
+              Automated abnormal conditions classification reduces reliance on expert judgment, enables faster response times, and supports the transition from time-based to condition-based maintenance strategies. These models continuously improve through experience, adapting to new data patterns and environmental conditions.
             </p>
           </CardContent>
         </Card>

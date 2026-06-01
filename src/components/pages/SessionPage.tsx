@@ -448,7 +448,7 @@ export default function SessionPage() {
         <div>
           <h1 className="text-xl font-medium text-foreground">Transformer Data History & Analytics</h1>
           <p className="text-sm text-muted-foreground font-medium mt-1">
-            Multi-transformer historical monitoring data with fault classification analytics.
+            Multi-transformer historical monitoring data with abnormal conditions classification analytics.
           </p>
         </div>
         <div className="flex items-center gap-2">
