@@ -76,35 +76,19 @@ const DEFAULT_THRESHOLDS: TransformerThresholds = {
 
 // ─── Classification Functions (dynamic thresholds) ──────────────────────────
 
-function classifyVoltage(
-  primaryVoltage: number,
-  secondaryVoltage: number,
-  t: TransformerThresholds
-) {
-  // Check primary voltage against primary limits
+function classifyVoltage(primaryVoltage: number, t: TransformerThresholds) {
+  // Only classify based on primary voltage per spec
   const pvLow = t.primaryVoltageLower;
   const pvHigh = t.primaryVoltageUpper;
-  // Check secondary voltage against secondary limits
-  const svLow = t.secondaryVoltageLower;
-  const svHigh = t.secondaryVoltageUpper;
+  const res = voltageRangeStatus(primaryVoltage, pvLow, pvHigh);
 
-  const pvStatus = voltageRangeStatus(primaryVoltage, pvLow, pvHigh);
-  const svStatus = voltageRangeStatus(secondaryVoltage, svLow, svHigh);
-
-  // Return the worse status
-  if (pvStatus.fault || svStatus.fault) {
-    const faultNames: string[] = [];
-    if (pvStatus.fault) faultNames.push(pvStatus.fault);
-    if (svStatus.fault) faultNames.push(svStatus.fault);
-    return { status: "Voltage Fault", isFault: true, isWarning: false, faultName: faultNames.join(", "), warningName: "" };
+  if (res.fault) {
+    return { status: res.fault, isFault: true, isWarning: false, faultName: res.fault, warningName: '' };
   }
-  if (pvStatus.warning || svStatus.warning) {
-    const warningNames: string[] = [];
-    if (pvStatus.warning) warningNames.push(pvStatus.warning);
-    if (svStatus.warning) warningNames.push(svStatus.warning);
-    return { status: "Voltage Warning", isFault: false, isWarning: true, faultName: "", warningName: warningNames.join(", ") };
+  if (res.warning) {
+    return { status: res.warning, isFault: false, isWarning: true, faultName: '', warningName: res.warning };
   }
-  return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
+  return { status: 'Normal', isFault: false, isWarning: false, faultName: '', warningName: '' };
 }
 
 function voltageRangeStatus(voltage: number, lowerLimit: number, upperLimit: number) {

@@ -368,9 +368,8 @@ export default function DashboardPage() {
     setLossPercentage(Math.max(0, calculatedLossPercentage));
     setLoadPercentage(calculatedLoadPercentage);
 
-    if (calculatedLossPercentage > 10) setLossStatus('Fault');
-    else if (calculatedLossPercentage > 5) setLossStatus('Warning');
-    else setLossStatus('Normal');
+    // Per new spec: Loss is not used to generate faults/warnings on the site.
+    setLossStatus('Normal');
 
     const payload = {
       primaryVoltage: sd.primaryVoltage ?? 0,
@@ -749,25 +748,25 @@ function LoadPercentageCard({
 
   function loadColor(lp: number) {
     if (lp <= 95) return 'text-green-600 dark:text-green-400';
-    if (lp <= 100) return 'text-amber-600 dark:text-amber-400';
+    if (lp < 99) return 'text-amber-600 dark:text-amber-400';
     return 'text-red-600 dark:text-red-400';
   }
 
   function loadProgressColor(lp: number) {
     if (lp <= 95) return '[&>div]:bg-green-500';
-    if (lp <= 100) return '[&>div]:bg-amber-500';
+    if (lp < 99) return '[&>div]:bg-amber-500';
     return '[&>div]:bg-red-500';
   }
 
   function loadLabel(lp: number) {
     if (lp <= 95) return 'Normal';
-    if (lp <= 100) return 'Warning';
+    if (lp < 99) return 'Warning';
     return 'Overload';
   }
 
   function loadBadgeColor(lp: number) {
     if (lp <= 95) return 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300 border-green-200 dark:border-green-800';
-    if (lp <= 100) return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+    if (lp < 99) return 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800';
     return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 border-red-200 dark:border-red-800';
   }
 
