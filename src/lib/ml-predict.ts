@@ -231,7 +231,6 @@ export function predict(
   const primaryPowerFactor = Number(sensorData.primaryPowerFactor) || 1;
   const secondaryPowerFactor = Number(sensorData.secondaryPowerFactor) || 1;
   const primaryPower = Number(sensorData.primaryPower) || primaryVoltage * primaryCurrent * primaryPowerFactor;
-  const secondaryCurrent = Number(sensorData.secondaryCurrent) || 0;
   const secondaryPower = Number(sensorData.secondaryPower) || (Number(sensorData.secondaryVoltage) || 0) * secondaryCurrent * secondaryPowerFactor;
   // Efficiency fallback: compute if not provided
   let efficiency = Number(sensorData.efficiency);
@@ -254,7 +253,7 @@ export function predict(
   // Use loss percentage for loss classification (more accurate than absolute watts)
   const effectiveLossPercentage = lossPercentage > 0 ? lossPercentage : (loss > 0 ? (loss / Math.max(1, Number(sensorData.primaryPower) || 1)) * 100 : 0);
 
-  const voltageResult = classifyVoltage(primaryVoltage, secondaryVoltage, t);
+  const voltageResult = classifyVoltage(primaryVoltage, t);
   const loadResult = classifyLoad(loadPercentage);
   const efficiencyResult = classifyEfficiency(efficiency);
 
