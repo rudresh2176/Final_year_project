@@ -108,31 +108,33 @@ function classifyVoltage(
 }
 
 function voltageRangeStatus(voltage: number, lowerLimit: number, upperLimit: number) {
-  const range = upperLimit - lowerLimit;
-  const warningMargin = range * 0.15; // 15% of range as warning buffer
-
+  // Use explicit ranges matching project spec.
+  // Normal: Vrated -10 .. Vrated +10
+  // Low Warning: lowerLimit .. (Vrated - 1)
+  // High Warning: (Vrated + 1) .. upperLimit
+  // Fault: < lowerLimit or > upperLimit
   if (voltage >= lowerLimit && voltage <= upperLimit) {
-    return { fault: "", warning: "" };
-  }
-  if (voltage > upperLimit && voltage <= upperLimit + warningMargin) {
+    // Derive normal window centered on rated (assume rated is midpoint)
+    const rated = (upperLimit + lowerLimit) / 2;
+    const normalLow = rated - 10;
+    const normalHigh = rated + 10;
+    if (voltage >= normalLow && voltage <= normalHigh) return { fault: "", warning: "" };
+    if (voltage < normalLow) return { fault: "", warning: "Low Voltage Warning" };
     return { fault: "", warning: "High Voltage Warning" };
   }
-  if (voltage < lowerLimit && voltage >= lowerLimit - warningMargin) {
-    return { fault: "", warning: "Low Voltage Warning" };
-  }
-  if (voltage > upperLimit + warningMargin) {
-    return { fault: "Over Voltage", warning: "" };
-  }
+  if (voltage > upperLimit) return { fault: "Over Voltage", warning: "" };
   return { fault: "Under Voltage", warning: "" };
 }
 
 function classifyLoad(loadPercentage: number) {
+  // According to spec: ≤95% Normal, ~95–98% Warning, ≥99% Fault
   if (loadPercentage <= 95) {
     return { status: "Normal", isFault: false, isWarning: false, faultName: "", warningName: "" };
   }
-  if (loadPercentage > 95 && loadPercentage <= 100) {
+  if (loadPercentage > 95 && loadPercentage < 99) {
     return { status: "Over Load Warning", isFault: false, isWarning: true, faultName: "", warningName: "Over Load Warning" };
   }
+  // loadPercentage >= 99
   return { status: "Over Load Fault", isFault: true, isWarning: false, faultName: "Over Load", warningName: "" };
 }
 
@@ -240,15 +242,29 @@ export function predict(
   const secondaryVoltage = Number(sensorData.secondaryVoltage) || 0;
   const secondaryCurrent = Number(sensorData.secondaryCurrent) || 0;
   const loss = Number(sensorData.loss) || 0;
-  const efficiency = Number(sensorData.efficiency) || 100;
   const lossPercentage = Number(sensorData.lossPercentage) || 0;
+  // Compute primary/secondary power if not provided, using PF fallback
+  const primaryPowerFactor = Number(sensorData.primaryPowerFactor) || 1;
+  const secondaryPowerFactor = Number(sensorData.secondaryPowerFactor) || 1;
+  const primaryPower = Number(sensorData.primaryPower) || primaryVoltage * primaryCurrent * primaryPowerFactor;
+  const secondaryCurrent = Number(sensorData.secondaryCurrent) || 0;
+  const secondaryPower = Number(sensorData.secondaryPower) || (Number(sensorData.secondaryVoltage) || 0) * secondaryCurrent * secondaryPowerFactor;
+  // Efficiency fallback: compute if not provided
+  let efficiency = Number(sensorData.efficiency);
+  if (!efficiency || efficiency <= 0) {
+    const pin = primaryPower || 1;
+    const pout = secondaryPower || 0;
+    efficiency = pin > 0 ? (pout / pin) * 100 : 100;
+  }
 
-  // Calculate load percentage dynamically based on rated primary current
+  // Calculate/load percentage dynamically based on rated primary current.
   let loadPercentage = Number(sensorData.loadPercentage);
   if (!loadPercentage || loadPercentage <= 0) {
-    loadPercentage = t.ratedPrimaryCurrent > 0
-      ? (primaryCurrent / t.ratedPrimaryCurrent) * 100
-      : 0;
+    // derive rated current from KVA and primary voltage when missing
+    const ratedPrimaryCurrent = t.ratedPrimaryCurrent && t.ratedPrimaryCurrent > 0
+      ? t.ratedPrimaryCurrent
+      : (t.kva * 1000) / Math.max(1, t.primaryVoltage);
+    loadPercentage = ratedPrimaryCurrent > 0 ? (primaryCurrent / ratedPrimaryCurrent) * 100 : 0;
   }
 
   // Use loss percentage for loss classification (more accurate than absolute watts)
@@ -282,13 +298,13 @@ export function predict(
   const sensorDataForAI: SensorData = {
     primaryVoltage,
     primaryCurrent,
-    primaryPower: Number(sensorData.primaryPower) || 0,
+    primaryPower: primaryPower,
     primaryEnergy: Number(sensorData.primaryEnergy) || 0,
     primaryFrequency: Number(sensorData.primaryFrequency) || 50,
     primaryPowerFactor: Number(sensorData.primaryPowerFactor) || 1,
     secondaryVoltage,
     secondaryCurrent,
-    secondaryPower: Number(sensorData.secondaryPower) || 0,
+    secondaryPower: secondaryPower,
     secondaryEnergy: Number(sensorData.secondaryEnergy) || 0,
     secondaryFrequency: Number(sensorData.secondaryFrequency) || 50,
     secondaryPowerFactor: Number(sensorData.secondaryPowerFactor) || 1,

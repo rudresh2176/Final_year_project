@@ -75,10 +75,11 @@ const EFFICIENCY = {
   WARNING: 80,
 } as const;
 
-// Load thresholds (%)
+// Load thresholds (%) — spec: ≤95% Normal, ~95–98% Warning, >=99% Fault
 const LOAD = {
   NORMAL: 95,
-  WARNING: 100,
+  WARNING: 98,
+  FAULT: 99,
 } as const;
 
 // ─── Classification Functions ───────────────────────────────────────────────
@@ -160,7 +161,7 @@ function classifyLoad(loadPercentage: number): {
       warningName: "",
     };
   }
-  if (loadPercentage > LOAD.NORMAL && loadPercentage <= LOAD.WARNING) {
+  if (loadPercentage > LOAD.NORMAL && loadPercentage < LOAD.FAULT) {
     return {
       status: "Over Load Warning",
       isFault: false,
@@ -169,7 +170,7 @@ function classifyLoad(loadPercentage: number): {
       warningName: "Over Load Warning",
     };
   }
-  // > 100%
+  // >= FAULT
   return {
     status: "Over Load Fault",
     isFault: true,
@@ -302,7 +303,6 @@ function simulateAIPrediction(
       voltageDistHigh,
       voltageDistNormLow,
       voltageDistNormHigh,
-      Math.abs(data.loss - LOSS.NORMAL),
       Math.abs(data.efficiency - EFFICIENCY.NORMAL),
       Math.abs(data.loadPercentage - LOAD.NORMAL)
     );
