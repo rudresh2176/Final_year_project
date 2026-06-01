@@ -330,7 +330,19 @@ function predict(sensorData: Record<string, unknown>): PredictResponse {
   const primaryVoltage = Number(sensorData.primaryVoltage) || 230;
   const primaryCurrent = Number(sensorData.primaryCurrent) || 0;
   const loss = Number(sensorData.loss) || 0;
-  const efficiency = Number(sensorData.efficiency) || 100;
+  // Compute powers and efficiency from formulas if not provided
+  const primaryPowerFactor = Number(sensorData.primaryPowerFactor) || 1;
+  const secondaryPowerFactor = Number(sensorData.secondaryPowerFactor) || 1;
+  const primaryPower = Number(sensorData.primaryPower) || primaryVoltage * primaryCurrent * primaryPowerFactor;
+  const secondaryCurrent = Number(sensorData.secondaryCurrent) || 0;
+  const secondaryVoltage = Number(sensorData.secondaryVoltage) || 0;
+  const secondaryPower = Number(sensorData.secondaryPower) || secondaryVoltage * secondaryCurrent * secondaryPowerFactor;
+  let efficiency = Number(sensorData.efficiency);
+  if (!efficiency || efficiency <= 0) {
+    const pin = primaryPower || 1;
+    const pout = secondaryPower || 0;
+    efficiency = pin > 0 ? (pout / pin) * 100 : 100;
+  }
 
   // Calculate load percentage if not provided or override with calculation
   let loadPercentage = Number(sensorData.loadPercentage);
