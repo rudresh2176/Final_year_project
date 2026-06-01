@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "TransMonitor",
-  description: "AI-Based Transformer Monitoring and Fault Classification System",
+  description: "AI-Based Transformer Monitoring and Abnormal Condition Classification System",
 };
 
 export default function RootLayout({

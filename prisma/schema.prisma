@@ -1,4 +1,4 @@
-// TransMonitor - Transformer Monitoring & Fault Classification System
+// TransMonitor - Transformer Monitoring & Abnormal Condition Classification System
 
 generator client {
   provider = "prisma-client-js"

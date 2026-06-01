@@ -43,8 +43,7 @@ export default function TopBar() {
         {/* Center: Project title */}
         <h1 className="flex-1 truncate px-3 text-sm font-medium md:text-base">
           <span className="hidden sm:inline">
-            Development of AI-Based System for Transformer Monitoring and Fault
-            Classification
+            Development of AI-Based System for Transformer Monitoring and Abnormal Condition Classification
           </span>
           <span className="sm:hidden">TransMonitor</span>
         </h1>

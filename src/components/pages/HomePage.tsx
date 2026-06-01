@@ -66,7 +66,7 @@ export default function HomePage() {
         <h1 className="text-3xl leading-tight font-medium md:text-4xl lg:text-5xl">
           Development of AI-Based System for{' '}
           <span className="text-foreground/80">Transformer Monitoring</span> and{' '}
-          <span className="text-foreground/80">Fault Classification</span>
+          <span className="text-foreground/80">Abnormal Condition Classification</span>
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
           An innovative IoT-based solution for real-time monitoring and intelligent fault
