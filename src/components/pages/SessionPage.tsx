@@ -125,6 +125,15 @@ function severityColor(severity: string): string {
   return 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-300';
 }
 
+function sanitizeFaultType(ft: string | null): string {
+  if (!ft) return '-';
+  const parts = ft
+    .split(',')
+    .map((s) => s.trim())
+    .filter((p) => !/High Loss|High Transformer Loss/i.test(p));
+  return parts.length > 0 ? parts.join(', ') : '-';
+}
+
 function transformerStatusColor(status: string): string {
   const s = status.toLowerCase();
   if (s === 'online') return 'text-green-600 dark:text-green-400';
@@ -162,14 +171,7 @@ function exportToCSV(data: DataRecord[], filename: string) {
     return str;
   };
 
-  const sanitizeFaultType = (ft: string | null) => {
-    if (!ft) return '-';
-    const parts = ft
-      .split(',')
-      .map((s) => s.trim())
-      .filter((p) => !/High Loss|High Transformer Loss/i.test(p));
-    return parts.length > 0 ? parts.join(', ') : '-';
-  };
+  
 
   const rows = data.map((row) => [
     escapeCSV(formatTimestamp(row.createdAt)),
